@@ -1,0 +1,76 @@
+services:
+  app:
+    build:
+      context: .
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/relaybox
+      DB_USER: relaybox
+      DB_PASSWORD: relaybox
+      RELAYBOX_MASTER_KEY: ${RELAYBOX_MASTER_KEY:-local-master-key}
+      TEST_RECEIVER_ENABLED: "true"
+      DELIVERY_MAX_ATTEMPTS: ${DELIVERY_MAX_ATTEMPTS:-3}
+      RETRY_BASE_DELAY_SECONDS: ${RETRY_BASE_DELAY_SECONDS:-1}
+      RETRY_JITTER_SECONDS: ${RETRY_JITTER_SECONDS:-0}
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: relaybox
+      POSTGRES_USER: relaybox
+      POSTGRES_PASSWORD: relaybox
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - relaybox-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relaybox -d relaybox"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres-test:
+    image: postgres:17-alpine
+    profiles: ["test"]
+    environment:
+      POSTGRES_DB: relaybox_test
+      POSTGRES_USER: relaybox_test
+      POSTGRES_PASSWORD: relaybox_test
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relaybox_test -d relaybox_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  integration-tests:
+    image: maven:3.9-eclipse-temurin-17-alpine
+    profiles: ["test"]
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+      - relaybox-maven-cache:/root/.m2
+    environment:
+      DB_URL: jdbc:postgresql://postgres-test:5432/relaybox_test
+      DB_USER: relaybox_test
+      DB_PASSWORD: relaybox_test
+      RELAYBOX_MASTER_KEY: test-master-key
+      TEST_RECEIVER_ENABLED: "true"
+      DELIVERY_MAX_ATTEMPTS: 3
+      WORKER_POLL_INTERVAL_MS: 100
+      RETRY_BASE_DELAY_SECONDS: 1
+      RETRY_JITTER_SECONDS: 0
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    command: ["mvn", "-B", "test"]
+
+volumes:
+  relaybox-postgres:
+  relaybox-maven-cache:
