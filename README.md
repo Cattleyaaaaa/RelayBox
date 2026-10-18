@@ -28,6 +28,20 @@ Compose 开发环境启用了本地测试接收器：管理接口仅接受主密
 
 ## 快速演示
 
+Docker Compose 服务启动后，可以一条命令跑完重试、死信、重放和租户限流演示。脚本使用唯一租户名，不打印签发的 API Key：
+
+```powershell
+.\scripts\demo.ps1
+```
+
+如果设置了自定义主密钥或 API 地址，可显式传入：
+
+```powershell
+.\scripts\demo.ps1 -BaseUrl "http://localhost:8080" -MasterKey $env:RELAYBOX_MASTER_KEY
+```
+
+脚本会轮询持久化投递状态，最长等待 120 秒；Docker Compose 默认重试策略下通常数秒即可完成。
+
 先用主密钥创建租户。创建响应只返回一次租户 API Key；平台只保存它的 SHA-256 摘要。之后管理该租户的端点和事件时，都在 `X-API-Key` 中使用这个租户密钥。PowerShell 示例：
 
 ```powershell
