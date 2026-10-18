@@ -66,7 +66,7 @@ class RelayBoxIntegrationTest {
         assertThat(repeated.path("duplicate").asBoolean()).isTrue();
         assertThat(repeated.path("deliveryCount").asInt()).isEqualTo(1);
         assertThat(get("/api/v1/events/" + first.path("eventId").asText() + "/deliveries", tenant.apiKey())
-                .body().size()).isEqualTo(1);
+                .body().path("items").size()).isEqualTo(1);
     }
 
     @Test
@@ -77,12 +77,22 @@ class RelayBoxIntegrationTest {
 
         JsonNode event = publish(tenant.apiKey(), "retry-" + UUID.randomUUID());
         JsonNode delivery = awaitDelivery(tenant.apiKey(), event.path("eventId").asText(), "SUCCEEDED", 3);
-        JsonNode attempts = get("/api/v1/deliveries/" + delivery.path("id").asText() + "/attempts", tenant.apiKey()).body();
+        JsonNode attempts = get("/api/v1/deliveries/" + delivery.path("id").asText() + "/attempts", tenant.apiKey())
+                .body().path("items");
 
         assertThat(attempts).hasSize(3);
         assertThat(attempts.get(0).path("responseCode").asInt()).isEqualTo(500);
         assertThat(attempts.get(1).path("responseCode").asInt()).isEqualTo(500);
         assertThat(attempts.get(2).path("responseCode").asInt()).isEqualTo(200);
+
+        JsonNode firstPage = get("/api/v1/deliveries/" + delivery.path("id").asText() + "/attempts?limit=2&offset=0",
+                tenant.apiKey()).body();
+        JsonNode lastPage = get("/api/v1/deliveries/" + delivery.path("id").asText() + "/attempts?limit=2&offset=2",
+                tenant.apiKey()).body();
+        assertThat(firstPage.path("items")).hasSize(2);
+        assertThat(firstPage.path("hasMore").asBoolean()).isTrue();
+        assertThat(lastPage.path("items")).hasSize(1);
+        assertThat(lastPage.path("hasMore").asBoolean()).isFalse();
     }
 
     @Test
@@ -94,7 +104,7 @@ class RelayBoxIntegrationTest {
         JsonNode event = publish(tenant.apiKey(), "dead-" + UUID.randomUUID());
         JsonNode deadDelivery = awaitDelivery(tenant.apiKey(), event.path("eventId").asText(), "DEAD", 3);
         String deliveryId = deadDelivery.path("id").asText();
-        assertThat(get("/api/v1/deliveries/" + deliveryId + "/attempts", tenant.apiKey()).body()).hasSize(3);
+        assertThat(get("/api/v1/deliveries/" + deliveryId + "/attempts", tenant.apiKey()).body().path("items")).hasSize(3);
 
         configureReceiver(0);
         assertThat(call("POST", "/api/v1/deliveries/" + deliveryId + "/replay", tenant.apiKey(), "")
@@ -102,7 +112,7 @@ class RelayBoxIntegrationTest {
 
         JsonNode replayed = awaitDelivery(tenant.apiKey(), event.path("eventId").asText(), "SUCCEEDED", 4);
         assertThat(replayed.path("attemptCount").asInt()).isEqualTo(4);
-        assertThat(get("/api/v1/deliveries/" + deliveryId + "/attempts", tenant.apiKey()).body()).hasSize(4);
+        assertThat(get("/api/v1/deliveries/" + deliveryId + "/attempts", tenant.apiKey()).body().path("items")).hasSize(4);
     }
 
     @Test
@@ -117,11 +127,13 @@ class RelayBoxIntegrationTest {
         assertThat(otherEvent.path("eventId").asText()).isNotEqualTo(ownerEvent.path("eventId").asText());
         assertThat(otherEvent.path("deliveryCount").asInt()).isZero();
 
-        JsonNode ownerDeliveries = get("/api/v1/events/" + ownerEvent.path("eventId").asText() + "/deliveries", owner.apiKey()).body();
+        JsonNode ownerDeliveries = get("/api/v1/events/" + ownerEvent.path("eventId").asText() + "/deliveries", owner.apiKey())
+                .body().path("items");
         assertThat(ownerDeliveries).hasSize(1);
         String deliveryId = ownerDeliveries.get(0).path("id").asText();
 
-        JsonNode hiddenDeliveries = get("/api/v1/events/" + ownerEvent.path("eventId").asText() + "/deliveries", other.apiKey()).body();
+        JsonNode hiddenDeliveries = get("/api/v1/events/" + ownerEvent.path("eventId").asText() + "/deliveries", other.apiKey())
+                .body().path("items");
         assertThat(hiddenDeliveries).isEmpty();
         assertThat(call("POST", "/api/v1/deliveries/" + deliveryId + "/replay", other.apiKey(), "")
                 .status()).isEqualTo(400);
@@ -202,6 +214,51 @@ class RelayBoxIntegrationTest {
         assertThat(get("/api/v1/endpoints", finalKey).status()).isEqualTo(200);
     }
 
+    @Test
+    void endpointCanBePausedAndResumedForFutureEvents() {
+        Tenant tenant = createTenant("endpoint-lifecycle");
+        Response<JsonNode> endpoint = call("POST", "/api/v1/endpoints", tenant.apiKey(),
+                "{\"url\":\"http://localhost:" + port + "/dev/receiver/deliver\",\"eventTypes\":[\"order.created\"]}");
+        String endpointId = endpoint.body().path("id").asText();
+
+        Response<JsonNode> paused = call("PATCH", "/api/v1/endpoints/" + endpointId, tenant.apiKey(),
+                "{\"enabled\":false}");
+        assertThat(paused.status()).isEqualTo(200);
+        assertThat(paused.body().path("enabled").asBoolean()).isFalse();
+        assertThat(get("/api/v1/endpoints", tenant.apiKey()).body().get(0).path("enabled").asBoolean()).isFalse();
+
+        JsonNode pausedEvent = publish(tenant.apiKey(), "paused-" + UUID.randomUUID());
+        assertThat(pausedEvent.path("deliveryCount").asInt()).isZero();
+
+        Response<JsonNode> resumed = call("PATCH", "/api/v1/endpoints/" + endpointId, tenant.apiKey(),
+                "{\"enabled\":true}");
+        assertThat(resumed.status()).isEqualTo(200);
+        assertThat(resumed.body().path("enabled").asBoolean()).isTrue();
+        JsonNode resumedEvent = publish(tenant.apiKey(), "resumed-" + UUID.randomUUID());
+        assertThat(resumedEvent.path("deliveryCount").asInt()).isEqualTo(1);
+
+        Tenant other = createTenant("endpoint-lifecycle-other");
+        assertThat(call("PATCH", "/api/v1/endpoints/" + endpointId, other.apiKey(),
+                "{\"enabled\":false}").status()).isEqualTo(400);
+    }
+
+    @Test
+    void deliveryListingUsesBoundedStableOffsetPages() {
+        Tenant tenant = createTenant("delivery-pages");
+        for (int index = 0; index < 3; index++) createEndpoint(tenant.apiKey());
+        JsonNode event = publish(tenant.apiKey(), "pages-" + UUID.randomUUID());
+        assertThat(event.path("deliveryCount").asInt()).isEqualTo(3);
+
+        String path = "/api/v1/events/" + event.path("eventId").asText() + "/deliveries";
+        JsonNode firstPage = get(path + "?limit=2&offset=0", tenant.apiKey()).body();
+        JsonNode lastPage = get(path + "?limit=2&offset=2", tenant.apiKey()).body();
+        assertThat(firstPage.path("items")).hasSize(2);
+        assertThat(firstPage.path("hasMore").asBoolean()).isTrue();
+        assertThat(lastPage.path("items")).hasSize(1);
+        assertThat(lastPage.path("hasMore").asBoolean()).isFalse();
+        assertThat(get(path + "?limit=101&offset=0", tenant.apiKey()).status()).isEqualTo(400);
+    }
+
     private Tenant createTenant(String prefix) {
         return createTenant(prefix, null);
     }
@@ -239,7 +296,7 @@ class RelayBoxIntegrationTest {
     private JsonNode awaitDelivery(String apiKey, String eventId, String expectedStatus, int expectedAttempts) {
         var result = new java.util.concurrent.atomic.AtomicReference<JsonNode>();
         await().atMost(Duration.ofSeconds(40)).pollInterval(Duration.ofMillis(100)).untilAsserted(() -> {
-            JsonNode deliveries = get("/api/v1/events/" + eventId + "/deliveries", apiKey).body();
+            JsonNode deliveries = get("/api/v1/events/" + eventId + "/deliveries", apiKey).body().path("items");
             assertThat(deliveries).hasSize(1);
             JsonNode delivery = deliveries.get(0);
             assertThat(delivery.path("status").asText()).isEqualTo(expectedStatus);

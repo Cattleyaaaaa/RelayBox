@@ -107,7 +107,7 @@ Compose 演示默认三次失败后标记为 `DEAD`，然后能在不丢失旧�
 
 ## 集成测试
 
-集成测试会启动完整 Spring Boot 应用和独立 PostgreSQL 测试库，覆盖事件幂等、自动重试、死信重放、租户隔离、并发配额、Webhook 目标校验、多个 worker 的并发领取，以及 worker 租约过期后的恢复和死信处理。首次运行会下载 Maven 依赖：
+集成测试会启动完整 Spring Boot 应用和独立 PostgreSQL 测试库，覆盖事件幂等、自动重试、死信重放、租户隔离、API Key 轮换与过期、端点启停和租户隔离、投递分页、并发配额、Webhook 目标校验、多个 worker 的并发领取，以及 worker 租约过期后的恢复和死信处理。首次运行会下载 Maven 依赖：
 
 ```powershell
 docker compose --profile test run --rm integration-tests
@@ -125,6 +125,7 @@ docker compose --profile test run --rm integration-tests
 | `POST` | `/api/v1/tenants/api-key/rotate` | 用当前租户密钥轮换 API Key，可设置旧密钥宽限期 |
 | `POST` | `/api/v1/endpoints` | 注册订阅端点，返回一次性签名密钥 |
 | `GET` | `/api/v1/endpoints` | 列出端点 |
+| `PATCH` | `/api/v1/endpoints/{endpointId}` | 暂停或恢复端点（`{"enabled":false}` / `{"enabled":true}`） |
 | `POST` | `/api/v1/events` | 发布事件；同一幂等键只创建一次事件 |
 | `GET` | `/api/v1/events/{eventId}/deliveries` | 查看事件的投递状态 |
 | `GET` | `/api/v1/deliveries/{deliveryId}/attempts` | 查看逐次投递尝试、状态码与耗时 |
@@ -142,6 +143,10 @@ docker compose --profile test run --rm integration-tests
 事件发布还支持每租户独立的分钟配额。创建租户时可在请求中设置 `eventRateLimitPerMinute`（1–10000），不传则使用默认 120 次/分钟。限流计数在 PostgreSQL 中通过原子 upsert 完成，多个应用实例共享同一配额；超额请求返回 HTTP 429、`Retry-After`、`X-RateLimit-Limit` 和 `X-RateLimit-Remaining` 响应头。重复发布也计入请求配额，避免通过幂等键绕过入口流量限制。并发集成测试会同时发送超额请求并验证配额精确生效，同时确认不同租户的计数相互隔离。
 
 Webhook 目标默认必须是 HTTP/HTTPS，且解析后不能指向回环、内网、链路本地、组播或保留地址；创建端点和发送请求前都会检查。项目的本地 Compose 演示需要访问容器内的测试接收器，因此显式设置 `ALLOW_PRIVATE_WEBHOOK_TARGETS=true`。部署到可访问外网的环境时应保持默认 `false`，并配合网络层出口规则限制服务可访问的网段。
+
+端点可以按租户暂停或恢复。暂停后新事件不再为该端点创建投递任务；已经入队的任务继续完成，避免暂停操作悄悄丢弃已接受的事件。端点列表包含启停状态，租户不能修改其他租户的端点。
+
+投递记录和尝试历史使用有上限的 offset 分页：默认 `limit=50&offset=0`，每页最多 100 条。响应包含 `items`、`limit`、`offset` 和 `hasMore`；排序附带唯一 ID，保证相同时间戳下仍可稳定翻页。例如：`GET /api/v1/events/{eventId}/deliveries?limit=20&offset=0`。
 
 队列可靠性由 PostgreSQL 事务实现：多个 worker 使用 `FOR UPDATE SKIP LOCKED` 领取互不重叠的任务；任务带两分钟执行租约。租约过期后，下次轮询会关闭遗留的 `IN_FLIGHT` 尝试并按剩余次数重新入队，达到上限则转为 `DEAD`。队列集成测试通过同时领取、强制过期租约和尝试次数耗尽三种场景检查恢复行为。
 

@@ -44,13 +44,26 @@ public class WebhookService {
         Instant createdAt = Instant.now();
         jdbc.update("INSERT INTO webhook_endpoint (id, tenant_id, url, signing_secret, event_types) VALUES (?, ?, ?, ?, ?::jsonb)",
                 id, tenantId, request.url(), secret, writeJson(eventTypes));
-        return new ApiModels.EndpointResponse(id, request.url(), eventTypes, secret, createdAt);
+        return new ApiModels.EndpointResponse(id, request.url(), eventTypes, secret, true, createdAt, createdAt);
     }
 
     public List<ApiModels.EndpointResponse> listEndpoints(UUID tenantId) {
-        return jdbc.query("SELECT id, url, event_types::text, created_at FROM webhook_endpoint WHERE tenant_id = ? AND enabled = TRUE ORDER BY created_at DESC",
+        return jdbc.query("SELECT id, url, event_types::text, enabled, created_at, updated_at FROM webhook_endpoint WHERE tenant_id = ? ORDER BY created_at DESC, id DESC",
                 (rs, row) -> new ApiModels.EndpointResponse(rs.getObject("id", UUID.class), rs.getString("url"),
-                        readStringList(rs.getString("event_types")), null, rs.getTimestamp("created_at").toInstant()), tenantId);
+                        readStringList(rs.getString("event_types")), null, rs.getBoolean("enabled"),
+                        rs.getTimestamp("created_at").toInstant(), rs.getTimestamp("updated_at").toInstant()), tenantId);
+    }
+
+    @Transactional
+    public ApiModels.EndpointStatusResponse setEndpointEnabled(UUID tenantId, UUID endpointId, boolean enabled) {
+        List<ApiModels.EndpointStatusResponse> updated = jdbc.query("""
+                UPDATE webhook_endpoint SET enabled = ?, updated_at = now()
+                WHERE tenant_id = ? AND id = ?
+                RETURNING id, enabled, updated_at
+                """, (rs, row) -> new ApiModels.EndpointStatusResponse(rs.getObject("id", UUID.class),
+                rs.getBoolean("enabled"), rs.getTimestamp("updated_at").toInstant()), enabled, tenantId, endpointId);
+        if (updated.isEmpty()) throw new IllegalArgumentException("endpoint does not exist for this tenant");
+        return updated.get(0);
     }
 
     @Transactional
@@ -83,37 +96,54 @@ public class WebhookService {
         return new ApiModels.PublishEventResponse(eventId, deliveries.size(), false);
     }
 
-    public List<ApiModels.DeliveryResponse> listDeliveries(UUID tenantId, UUID eventId) {
-        return jdbc.query("""
+    public ApiModels.PageResponse<ApiModels.DeliveryResponse> listDeliveries(UUID tenantId, UUID eventId,
+                                                                              int limit, int offset) {
+        validatePage(limit, offset);
+        List<ApiModels.DeliveryResponse> rows = jdbc.query("""
                 SELECT d.id AS id, d.event_id AS event_id, d.endpoint_id AS endpoint_id,
                        d.status AS status, d.attempt_count AS attempt_count, d.next_attempt_at AS next_attempt_at,
                        d.last_status_code AS last_status_code, d.last_error AS last_error,
                        d.created_at AS created_at, d.updated_at AS updated_at
                 FROM webhook_delivery d JOIN webhook_event ev ON ev.id = d.event_id
-                WHERE d.event_id = ? AND ev.tenant_id = ? ORDER BY d.created_at
+                WHERE d.event_id = ? AND ev.tenant_id = ? ORDER BY d.created_at, d.id LIMIT ? OFFSET ?
                 """, (rs, row) -> new ApiModels.DeliveryResponse(
                 rs.getObject("id", UUID.class), rs.getObject("event_id", UUID.class),
                 rs.getObject("endpoint_id", UUID.class), rs.getString("status"), rs.getInt("attempt_count"),
                 rs.getTimestamp("next_attempt_at").toInstant(), (Integer) rs.getObject("last_status_code"),
                 rs.getString("last_error"), rs.getTimestamp("created_at").toInstant(),
-                rs.getTimestamp("updated_at").toInstant()), eventId, tenantId);
+                rs.getTimestamp("updated_at").toInstant()), eventId, tenantId, limit + 1, offset);
+        return page(rows, limit, offset);
     }
 
-    public List<ApiModels.DeliveryAttemptResponse> listAttempts(UUID tenantId, UUID deliveryId) {
-        return jdbc.query("""
+    public ApiModels.PageResponse<ApiModels.DeliveryAttemptResponse> listAttempts(UUID tenantId, UUID deliveryId,
+                                                                                    int limit, int offset) {
+        validatePage(limit, offset);
+        List<ApiModels.DeliveryAttemptResponse> rows = jdbc.query("""
                 SELECT a.id, a.attempt_number, a.status, a.response_code, a.error,
                        a.duration_ms, a.started_at, a.completed_at
                 FROM webhook_delivery_attempt a
                 JOIN webhook_delivery d ON d.id = a.delivery_id
                 JOIN webhook_event ev ON ev.id = d.event_id
                 WHERE d.id = ? AND ev.tenant_id = ?
-                ORDER BY a.attempt_number
+                ORDER BY a.attempt_number LIMIT ? OFFSET ?
                 """, (rs, row) -> new ApiModels.DeliveryAttemptResponse(
                 rs.getObject("id", UUID.class), rs.getInt("attempt_number"), rs.getString("status"),
                 (Integer) rs.getObject("response_code"), rs.getString("error"),
                 (Long) rs.getObject("duration_ms"), rs.getTimestamp("started_at").toInstant(),
                 rs.getTimestamp("completed_at") == null ? null : rs.getTimestamp("completed_at").toInstant()),
-                deliveryId, tenantId);
+                deliveryId, tenantId, limit + 1, offset);
+        return page(rows, limit, offset);
+    }
+
+    private void validatePage(int limit, int offset) {
+        if (limit < 1 || limit > 100) throw new IllegalArgumentException("limit must be between 1 and 100");
+        if (offset < 0) throw new IllegalArgumentException("offset must be zero or greater");
+    }
+
+    private <T> ApiModels.PageResponse<T> page(List<T> rows, int limit, int offset) {
+        boolean hasMore = rows.size() > limit;
+        List<T> items = hasMore ? List.copyOf(rows.subList(0, limit)) : List.copyOf(rows);
+        return new ApiModels.PageResponse<>(items, limit, offset, hasMore);
     }
 
     @Transactional

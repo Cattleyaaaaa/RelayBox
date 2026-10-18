@@ -28,7 +28,10 @@ public final class ApiModels {
             @NotEmpty List<@NotBlank @Size(max = 160) String> eventTypes) {}
 
     public record EndpointResponse(UUID id, String url, List<String> eventTypes,
-                                   String signingSecret, Instant createdAt) {}
+                                   String signingSecret, boolean enabled, Instant createdAt, Instant updatedAt) {}
+
+    public record SetEndpointEnabledRequest(@NotNull Boolean enabled) {}
+    public record EndpointStatusResponse(UUID id, boolean enabled, Instant updatedAt) {}
 
     public record PublishEventRequest(
             @NotBlank @Size(max = 160) String type,
@@ -45,4 +48,6 @@ public final class ApiModels {
     public record DeliveryAttemptResponse(UUID id, int attemptNumber, String status,
                                           Integer responseCode, String error, Long durationMs,
                                           Instant startedAt, Instant completedAt) {}
+
+    public record PageResponse<T>(List<T> items, int limit, int offset, boolean hasMore) {}
 }
