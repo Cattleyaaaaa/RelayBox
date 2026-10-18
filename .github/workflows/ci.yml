@@ -35,6 +35,7 @@ jobs:
       DB_PASSWORD: relaybox_test
       RELAYBOX_MASTER_KEY: ci-test-master-key
       TEST_RECEIVER_ENABLED: "true"
+      ALLOW_PRIVATE_WEBHOOK_TARGETS: "true"
       DELIVERY_MAX_ATTEMPTS: 3
       WORKER_POLL_INTERVAL_MS: 100
       RETRY_BASE_DELAY_SECONDS: 1

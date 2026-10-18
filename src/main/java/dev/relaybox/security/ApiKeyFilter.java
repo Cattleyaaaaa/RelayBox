@@ -5,7 +5,9 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import dev.relaybox.service.TenantEventRateLimiter;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -20,10 +22,13 @@ import java.util.UUID;
 public class ApiKeyFilter extends OncePerRequestFilter {
     private final byte[] masterKey;
     private final JdbcTemplate jdbc;
+    private final TenantEventRateLimiter rateLimiter;
 
-    public ApiKeyFilter(@Value("${relaybox.master-key}") String masterKey, JdbcTemplate jdbc) {
+    public ApiKeyFilter(@Value("${relaybox.master-key}") String masterKey, JdbcTemplate jdbc,
+                        TenantEventRateLimiter rateLimiter) {
         this.masterKey = masterKey.getBytes(StandardCharsets.UTF_8);
         this.jdbc = jdbc;
+        this.rateLimiter = rateLimiter;
     }
 
     @Override
@@ -56,12 +61,22 @@ public class ApiKeyFilter extends OncePerRequestFilter {
             return;
         }
         request.setAttribute("tenantId", tenant.id());
+        if ("POST".equalsIgnoreCase(request.getMethod()) && "/api/v1/events".equals(request.getRequestURI())) {
+            TenantEventRateLimiter.Decision decision = rateLimiter.acquire(tenant.id(), tenant.eventRateLimitPerMinute());
+            response.setHeader("X-RateLimit-Limit", Integer.toString(decision.limit()));
+            response.setHeader("X-RateLimit-Remaining", Integer.toString(decision.remaining()));
+            if (!decision.allowed()) {
+                response.setHeader("Retry-After", Integer.toString(decision.retryAfterSeconds()));
+                response.sendError(HttpStatus.TOO_MANY_REQUESTS.value(), "tenant event rate limit exceeded");
+                return;
+            }
+        }
         chain.doFilter(request, response);
     }
 
     private ListResult findTenant(String apiKeyHash) {
-        return jdbc.query("SELECT id FROM tenant WHERE api_key_hash = ? AND enabled = TRUE", rs ->
-                rs.next() ? new ListResult(rs.getObject("id", UUID.class)) : null, apiKeyHash);
+        return jdbc.query("SELECT id, event_rate_limit_per_minute FROM tenant WHERE api_key_hash = ? AND enabled = TRUE", rs ->
+                rs.next() ? new ListResult(rs.getObject("id", UUID.class), rs.getInt("event_rate_limit_per_minute")) : null, apiKeyHash);
     }
 
     private String sha256(String value) {
@@ -72,5 +87,5 @@ public class ApiKeyFilter extends OncePerRequestFilter {
         }
     }
 
-    private record ListResult(UUID id) {}
+    private record ListResult(UUID id, int eventRateLimitPerMinute) {}
 }

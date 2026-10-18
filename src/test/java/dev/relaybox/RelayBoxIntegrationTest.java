@@ -2,6 +2,7 @@ package dev.relaybox;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import dev.relaybox.security.WebhookTargetPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Execution;
@@ -17,9 +18,15 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -116,10 +123,62 @@ class RelayBoxIntegrationTest {
                 .status()).isEqualTo(400);
     }
 
+    @Test
+    void tenantEventRateLimitIsAtomicAndIsolatedPerTenant() throws Exception {
+        Tenant limited = createTenant("limited", 5);
+        assertThat(limited.eventRateLimitPerMinute()).isEqualTo(5);
+        ExecutorService callers = Executors.newFixedThreadPool(10);
+        List<Future<Response<JsonNode>>> responses = new ArrayList<>();
+        try {
+            for (int index = 0; index < 20; index++) {
+                String idempotencyKey = "limited-" + index + "-" + UUID.randomUUID();
+                responses.add(callers.submit(() -> publishResult(limited.apiKey(), idempotencyKey)));
+            }
+            List<Response<JsonNode>> results = new ArrayList<>();
+            for (Future<Response<JsonNode>> response : responses) results.add(response.get());
+
+            assertThat(results.stream().filter(result -> result.status() == 202)).hasSize(5);
+            List<Response<JsonNode>> rejected = results.stream().filter(result -> result.status() == 429).toList();
+            assertThat(rejected).hasSize(15);
+            assertThat(rejected).allSatisfy(result -> {
+                assertThat(result.retryAfter()).isNotNull();
+                assertThat(Integer.parseInt(result.retryAfter())).isBetween(1, 60);
+                assertThat(result.rateLimit()).isEqualTo("5");
+                assertThat(result.rateLimitRemaining()).isEqualTo("0");
+            });
+        } finally {
+            callers.shutdownNow();
+        }
+
+        Tenant other = createTenant("unlimited");
+        assertThat(publishResult(other.apiKey(), "other-" + UUID.randomUUID()).status()).isEqualTo(202);
+    }
+
+    @Test
+    void publicWebhookPolicyRejectsLoopbackAndPrivateTargets() {
+        WebhookTargetPolicy strictPolicy = new WebhookTargetPolicy(false);
+
+        assertThatThrownBy(() -> strictPolicy.validate("http://127.0.0.1:8080/hook"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("public IP");
+        assertThatThrownBy(() -> strictPolicy.validate("http://[::1]:8080/hook"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("public IP");
+        assertThatThrownBy(() -> strictPolicy.validate("file:///etc/passwd"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("HTTP or HTTPS");
+    }
+
     private Tenant createTenant(String prefix) {
-        JsonNode body = call("POST", "/api/v1/tenants", MASTER_KEY,
-                "{\"name\":\"" + prefix + "-" + UUID.randomUUID() + "\"}").body();
-        return new Tenant(body.path("id").asText(), body.path("apiKey").asText());
+        return createTenant(prefix, null);
+    }
+
+    private Tenant createTenant(String prefix, Integer eventRateLimitPerMinute) {
+        String request = "{\"name\":\"" + prefix + "-" + UUID.randomUUID() + "\""
+                + (eventRateLimitPerMinute == null ? "" : ",\"eventRateLimitPerMinute\":" + eventRateLimitPerMinute) + "}";
+        JsonNode body = call("POST", "/api/v1/tenants", MASTER_KEY, request).body();
+        return new Tenant(body.path("id").asText(), body.path("apiKey").asText(),
+                body.path("eventRateLimitPerMinute").asInt());
     }
 
     private void createEndpoint(String apiKey) {
@@ -129,9 +188,13 @@ class RelayBoxIntegrationTest {
     }
 
     private JsonNode publish(String apiKey, String idempotencyKey) {
+        return publishResult(apiKey, idempotencyKey).body();
+    }
+
+    private Response<JsonNode> publishResult(String apiKey, String idempotencyKey) {
         return call("POST", "/api/v1/events", apiKey,
                 "{\"type\":\"order.created\",\"idempotencyKey\":\"" + idempotencyKey
-                        + "\",\"payload\":{\"orderId\":\"order-123\"}}").body();
+                        + "\",\"payload\":{\"orderId\":\"order-123\"}}");
     }
 
     private void configureReceiver(int failuresBeforeSuccess) {
@@ -168,12 +231,16 @@ class RelayBoxIntegrationTest {
         try {
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             JsonNode responseBody = response.body().isBlank() ? null : mapper.readTree(response.body());
-            return new Response<>(response.statusCode(), responseBody);
+            return new Response<>(response.statusCode(), responseBody,
+                    response.headers().firstValue("Retry-After").orElse(null),
+                    response.headers().firstValue("X-RateLimit-Limit").orElse(null),
+                    response.headers().firstValue("X-RateLimit-Remaining").orElse(null));
         } catch (Exception exception) {
             throw new IllegalStateException("HTTP integration request failed: " + method + " " + path, exception);
         }
     }
 
-    private record Response<T>(int status, T body) {}
-    private record Tenant(String id, String apiKey) {}
+    private record Response<T>(int status, T body, String retryAfter,
+                               String rateLimit, String rateLimitRemaining) {}
+    private record Tenant(String id, String apiKey, int eventRateLimitPerMinute) {}
 }

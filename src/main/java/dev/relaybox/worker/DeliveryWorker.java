@@ -2,6 +2,7 @@ package dev.relaybox.worker;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import dev.relaybox.security.WebhookTargetPolicy;
 import dev.relaybox.service.DeliveryQueue;
 import dev.relaybox.service.DeliveryQueue.DeliveryTask;
 import dev.relaybox.service.WebhookService;
@@ -12,7 +13,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -29,14 +29,17 @@ public class DeliveryWorker {
     private final ObjectMapper mapper;
     private final WebhookService webhookService;
     private final DeliveryQueue queue;
+    private final WebhookTargetPolicy targetPolicy;
     private final HttpClient httpClient;
     private final Executor deliveryExecutor;
 
     public DeliveryWorker(ObjectMapper mapper, WebhookService webhookService, DeliveryQueue queue,
+                          WebhookTargetPolicy targetPolicy,
                           @Qualifier("deliveryExecutor") Executor deliveryExecutor) {
         this.mapper = mapper;
         this.webhookService = webhookService;
         this.queue = queue;
+        this.targetPolicy = targetPolicy;
         this.deliveryExecutor = deliveryExecutor;
         this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3))
                 .followRedirects(HttpClient.Redirect.NEVER).build();
@@ -60,7 +63,7 @@ public class DeliveryWorker {
             String body = envelope(task);
             String timestamp = Long.toString(Instant.now().getEpochSecond());
             String signature = sign(task.signingSecret(), timestamp + "." + body);
-            HttpRequest request = HttpRequest.newBuilder(URI.create(task.url()))
+            HttpRequest request = HttpRequest.newBuilder(targetPolicy.validate(task.url()))
                     .timeout(Duration.ofSeconds(10))
                     .header(HttpHeaders.CONTENT_TYPE, "application/json")
                     .header("X-Webhook-Id", task.eventId().toString())

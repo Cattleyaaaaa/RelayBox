@@ -4,12 +4,12 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import dev.relaybox.api.ApiModels;
+import dev.relaybox.security.WebhookTargetPolicy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.net.URI;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -21,28 +21,21 @@ import java.util.UUID;
 public class WebhookService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
+    private final WebhookTargetPolicy targetPolicy;
     private final int maxAttempts;
     private final SecureRandom random = new SecureRandom();
 
-    public WebhookService(JdbcTemplate jdbc, ObjectMapper mapper,
+    public WebhookService(JdbcTemplate jdbc, ObjectMapper mapper, WebhookTargetPolicy targetPolicy,
                           @Value("${relaybox.worker.max-attempts:8}") int maxAttempts) {
         this.jdbc = jdbc;
         this.mapper = mapper;
+        this.targetPolicy = targetPolicy;
         this.maxAttempts = maxAttempts;
     }
 
     @Transactional
     public ApiModels.EndpointResponse createEndpoint(UUID tenantId, ApiModels.CreateEndpointRequest request) {
-        URI uri;
-        try {
-            uri = URI.create(request.url());
-        } catch (IllegalArgumentException exception) {
-            throw new IllegalArgumentException("url must be a valid HTTP or HTTPS URL");
-        }
-        if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
-                || uri.getHost() == null || uri.getUserInfo() != null) {
-            throw new IllegalArgumentException("url must be an HTTP or HTTPS URL without user info");
-        }
+        targetPolicy.validate(request.url());
         List<String> eventTypes = request.eventTypes().stream().distinct().toList();
         byte[] secretBytes = new byte[32];
         random.nextBytes(secretBytes);

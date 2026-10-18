@@ -13,6 +13,10 @@ server:
   port: ${PORT:8080}
 relaybox:
   master-key: ${RELAYBOX_MASTER_KEY:local-master-key}
+  rate-limit:
+    default-events-per-minute: ${DEFAULT_EVENTS_PER_MINUTE:120}
+  webhook:
+    allow-private-targets: ${ALLOW_PRIVATE_WEBHOOK_TARGETS:false}
   test-receiver:
     enabled: ${TEST_RECEIVER_ENABLED:false}
   worker:

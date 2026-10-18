@@ -5,6 +5,10 @@ spring:
     password: ${DB_PASSWORD:relaybox_test}
 relaybox:
   master-key: ${RELAYBOX_MASTER_KEY:test-master-key}
+  rate-limit:
+    default-events-per-minute: ${DEFAULT_EVENTS_PER_MINUTE:120}
+  webhook:
+    allow-private-targets: true
   test-receiver:
     enabled: true
   worker:
