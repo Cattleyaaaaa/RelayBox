@@ -60,7 +60,14 @@ public class ApiKeyFilter extends OncePerRequestFilter {
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Missing or invalid API key");
             return;
         }
+        boolean keyRotation = "POST".equalsIgnoreCase(request.getMethod())
+                && "/api/v1/tenants/api-key/rotate".equals(request.getRequestURI());
+        if (keyRotation && !tenant.currentKey()) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "API key rotation requires the current API key");
+            return;
+        }
         request.setAttribute("tenantId", tenant.id());
+        request.setAttribute("apiKeyHash", apiKeyHash);
         if ("POST".equalsIgnoreCase(request.getMethod()) && "/api/v1/events".equals(request.getRequestURI())) {
             TenantEventRateLimiter.Decision decision = rateLimiter.acquire(tenant.id(), tenant.eventRateLimitPerMinute());
             response.setHeader("X-RateLimit-Limit", Integer.toString(decision.limit()));
@@ -75,8 +82,15 @@ public class ApiKeyFilter extends OncePerRequestFilter {
     }
 
     private ListResult findTenant(String apiKeyHash) {
-        return jdbc.query("SELECT id, event_rate_limit_per_minute FROM tenant WHERE api_key_hash = ? AND enabled = TRUE", rs ->
-                rs.next() ? new ListResult(rs.getObject("id", UUID.class), rs.getInt("event_rate_limit_per_minute")) : null, apiKeyHash);
+        return jdbc.query("""
+                SELECT id, event_rate_limit_per_minute, api_key_hash = ? AS current_key
+                FROM tenant
+                WHERE enabled = TRUE AND (
+                    api_key_hash = ? OR (previous_api_key_hash = ? AND previous_api_key_expires_at > now())
+                )
+                """, rs -> rs.next() ? new ListResult(rs.getObject("id", UUID.class),
+                rs.getInt("event_rate_limit_per_minute"), rs.getBoolean("current_key")) : null,
+                apiKeyHash, apiKeyHash, apiKeyHash);
     }
 
     private String sha256(String value) {
@@ -87,5 +101,5 @@ public class ApiKeyFilter extends OncePerRequestFilter {
         }
     }
 
-    private record ListResult(UUID id, int eventRateLimitPerMinute) {}
+    private record ListResult(UUID id, int eventRateLimitPerMinute, boolean currentKey) {}
 }

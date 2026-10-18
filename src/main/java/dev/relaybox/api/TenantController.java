@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import jakarta.servlet.http.HttpServletRequest;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/tenants")
@@ -20,5 +22,15 @@ public class TenantController {
     @ResponseStatus(HttpStatus.CREATED)
     public ApiModels.TenantResponse create(@Valid @RequestBody ApiModels.CreateTenantRequest request) {
         return tenants.create(request);
+    }
+
+    @PostMapping("/api-key/rotate")
+    public ApiModels.RotateTenantApiKeyResponse rotateApiKey(
+            @Valid @RequestBody(required = false) ApiModels.RotateTenantApiKeyRequest request,
+            HttpServletRequest servletRequest) {
+        UUID tenantId = (UUID) servletRequest.getAttribute("tenantId");
+        String apiKeyHash = (String) servletRequest.getAttribute("apiKeyHash");
+        Integer gracePeriodSeconds = request == null ? null : request.gracePeriodSeconds();
+        return tenants.rotateApiKey(tenantId, apiKeyHash, gracePeriodSeconds);
     }
 }

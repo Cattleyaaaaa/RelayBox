@@ -43,6 +43,31 @@ public class TenantService {
         return new ApiModels.TenantResponse(id, request.name().trim(), apiKey, eventRateLimit, createdAt);
     }
 
+    @Transactional
+    public ApiModels.RotateTenantApiKeyResponse rotateApiKey(UUID tenantId, String currentApiKeyHash,
+                                                              Integer requestedGracePeriodSeconds) {
+        int gracePeriodSeconds = requestedGracePeriodSeconds == null ? 300 : requestedGracePeriodSeconds;
+        if (gracePeriodSeconds < 0 || gracePeriodSeconds > 86400) {
+            throw new IllegalArgumentException("gracePeriodSeconds must be between 0 and 86400");
+        }
+
+        String apiKey = createApiKey();
+        java.util.List<Instant> expirations = jdbc.query("""
+                UPDATE tenant
+                SET previous_api_key_hash = CASE WHEN ? > 0 THEN api_key_hash ELSE NULL END,
+                    previous_api_key_expires_at = CASE
+                        WHEN ? > 0 THEN now() + (? * interval '1 second')
+                        ELSE NULL
+                    END,
+                    api_key_hash = ?
+                WHERE id = ? AND api_key_hash = ? AND enabled = TRUE
+                RETURNING previous_api_key_expires_at
+                """, (rs, row) -> rs.getTimestamp(1) == null ? null : rs.getTimestamp(1).toInstant(),
+                gracePeriodSeconds, gracePeriodSeconds, gracePeriodSeconds, sha256(apiKey), tenantId, currentApiKeyHash);
+        if (expirations.isEmpty()) throw new IllegalArgumentException("API key changed before rotation completed; retry with the current key");
+        return new ApiModels.RotateTenantApiKeyResponse(apiKey, expirations.get(0));
+    }
+
     private String createApiKey() {
         byte[] value = new byte[32];
         random.nextBytes(value);

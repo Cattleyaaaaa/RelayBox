@@ -20,6 +20,9 @@ public final class ApiModels {
     public record TenantResponse(UUID id, String name, String apiKey, int eventRateLimitPerMinute,
                                  Instant createdAt) {}
 
+    public record RotateTenantApiKeyRequest(@Min(0) @Max(86400) Integer gracePeriodSeconds) {}
+    public record RotateTenantApiKeyResponse(String apiKey, Instant oldKeyExpiresAt) {}
+
     public record CreateEndpointRequest(
             @NotBlank @Size(max = 2000) String url,
             @NotEmpty List<@NotBlank @Size(max = 160) String> eventTypes) {}

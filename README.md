@@ -122,6 +122,7 @@ docker compose --profile test run --rm integration-tests
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `POST` | `/api/v1/tenants` | 使用主密钥创建租户，并签发一次性 API Key；可配置 `eventRateLimitPerMinute` |
+| `POST` | `/api/v1/tenants/api-key/rotate` | 用当前租户密钥轮换 API Key，可设置旧密钥宽限期 |
 | `POST` | `/api/v1/endpoints` | 注册订阅端点，返回一次性签名密钥 |
 | `GET` | `/api/v1/endpoints` | 列出端点 |
 | `POST` | `/api/v1/events` | 发布事件；同一幂等键只创建一次事件 |
@@ -135,6 +136,8 @@ docker compose --profile test run --rm integration-tests
 ## 投递语义
 
 每个租户使用独立 API Key，数据库只保存密钥摘要。事件幂等键按租户唯一；端点列表、事件检索和重放都带租户条件，避免跨租户读写。投递任务和事件在同一数据库事务内落库。Worker 通过行锁跳过其他实例已领取的任务，领取时设置两分钟租约，并在同一事务写入尝试记录；进程异常退出后，租约到期的任务和未完成尝试会被恢复、留痕。接收端返回 2xx 才标记成功，其他状态码或网络错误按指数退避重试，最多尝试 8 次，随后标记为 `DEAD`。每次尝试都会保留状态、HTTP 状态码、错误和耗时；Micrometer 指标提供队列深度、结果计数和尝试耗时分布。网络调用无法提供严格的端到端 exactly-once 保证，因此接收方应使用投递 ID 做幂等处理。
+
+租户可通过 `POST /api/v1/tenants/api-key/rotate` 轮换密钥。请求体中的 `gracePeriodSeconds` 可设为 0–86400 秒，缺省为 300 秒；响应只返回一次新密钥。宽限期内旧、新密钥均可调用租户 API，但仅当前密钥可以再次轮换。宽限期结束后旧密钥自动失效；设为 0 则立即撤销旧密钥。数据库仅保存当前和过渡期旧密钥的 SHA-256 摘要。
 
 事件发布还支持每租户独立的分钟配额。创建租户时可在请求中设置 `eventRateLimitPerMinute`（1–10000），不传则使用默认 120 次/分钟。限流计数在 PostgreSQL 中通过原子 upsert 完成，多个应用实例共享同一配额；超额请求返回 HTTP 429、`Retry-After`、`X-RateLimit-Limit` 和 `X-RateLimit-Remaining` 响应头。重复发布也计入请求配额，避免通过幂等键绕过入口流量限制。并发集成测试会同时发送超额请求并验证配额精确生效，同时确认不同租户的计数相互隔离。
 

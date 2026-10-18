@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.ActiveProfiles;
@@ -40,6 +41,9 @@ class RelayBoxIntegrationTest {
 
     @Autowired
     private ObjectMapper mapper;
+
+    @Autowired
+    private JdbcTemplate jdbc;
 
     private final HttpClient http = HttpClient.newHttpClient();
 
@@ -167,6 +171,35 @@ class RelayBoxIntegrationTest {
         assertThatThrownBy(() -> strictPolicy.validate("file:///etc/passwd"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("HTTP or HTTPS");
+    }
+
+    @Test
+    void apiKeyRotationSupportsGracePeriodAndImmediateRevocation() {
+        Tenant tenant = createTenant("key-rotation");
+
+        Response<JsonNode> firstRotation = call("POST", "/api/v1/tenants/api-key/rotate", tenant.apiKey(),
+                "{\"gracePeriodSeconds\":30}");
+        assertThat(firstRotation.status()).isEqualTo(200);
+        String rotatedKey = firstRotation.body().path("apiKey").asText();
+        assertThat(rotatedKey).startsWith("rbx_").isNotEqualTo(tenant.apiKey());
+        assertThat(firstRotation.body().path("oldKeyExpiresAt").asText()).isNotBlank();
+
+        assertThat(get("/api/v1/endpoints", tenant.apiKey()).status()).isEqualTo(200);
+        assertThat(get("/api/v1/endpoints", rotatedKey).status()).isEqualTo(200);
+        assertThat(call("POST", "/api/v1/tenants/api-key/rotate", tenant.apiKey(),
+                "{\"gracePeriodSeconds\":30}").status()).isEqualTo(401);
+
+        jdbc.update("UPDATE tenant SET previous_api_key_expires_at = now() - interval '1 second' WHERE id = ?",
+                UUID.fromString(tenant.id()));
+        assertThat(get("/api/v1/endpoints", tenant.apiKey()).status()).isEqualTo(401);
+
+        Response<JsonNode> immediateRotation = call("POST", "/api/v1/tenants/api-key/rotate", rotatedKey,
+                "{\"gracePeriodSeconds\":0}");
+        assertThat(immediateRotation.status()).isEqualTo(200);
+        assertThat(immediateRotation.body().has("oldKeyExpiresAt")).isFalse();
+        String finalKey = immediateRotation.body().path("apiKey").asText();
+        assertThat(get("/api/v1/endpoints", rotatedKey).status()).isEqualTo(401);
+        assertThat(get("/api/v1/endpoints", finalKey).status()).isEqualTo(200);
     }
 
     private Tenant createTenant(String prefix) {
