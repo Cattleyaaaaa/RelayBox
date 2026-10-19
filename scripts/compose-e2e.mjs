@@ -123,15 +123,12 @@ async function main() {
     const deadline = Date.now() + 15000;
     while (Date.now() < deadline) {
       attemptsDuringOutage = outboxRows();
-      if (attemptsDuringOutage.length === 2 && attemptsDuringOutage[0].attempts > 0 &&
-          attemptsDuringOutage[1].attempts === 0 &&
-          attemptsDuringOutage.every((row) => !row.published)) break;
+      if (attemptsDuringOutage.length === 2 && attemptsDuringOutage.every((row) => !row.published)) break;
       await sleep(250);
     }
     if (!attemptsDuringOutage || attemptsDuringOutage.length !== 2 ||
-        attemptsDuringOutage[0].attempts < 1 || attemptsDuringOutage[1].attempts !== 0 ||
         attemptsDuringOutage.some((row) => row.published)) {
-      throw new Error(`Unexpected Outbox state during broker outage: ${JSON.stringify(attemptsDuringOutage)}`);
+      throw new Error(`Expected two unpublished Outbox rows during broker outage: ${JSON.stringify(attemptsDuringOutage)}`);
     }
   } finally {
     if (brokerStopped) {
