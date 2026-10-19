@@ -46,6 +46,24 @@ async function request(method, url, key, body) {
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+async function waitForApi(timeoutSeconds = 30) {
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  let latestError;
+  while (Date.now() < deadline) {
+    try {
+      const health = await request("GET", `${baseUrl}/actuator/health`, "");
+      if (health.status === "UP") return;
+      latestError = new Error(`API health is ${health.status}`);
+    } catch (error) {
+      latestError = error;
+    }
+    await sleep(500);
+  }
+  throw new Error(`API did not become reachable at ${baseUrl} within ${timeoutSeconds}s: ${latestError?.message ?? "unknown error"}`, {
+    cause: latestError,
+  });
+}
+
 function outboxRows() {
   const sql = `SELECT coalesce(json_agg(json_build_object(
       'attempts', o.attempts, 'published', o.published_at IS NOT NULL
@@ -77,8 +95,7 @@ async function waitForDeliveries(apiKey, expectedCount, timeoutSeconds = 45) {
 }
 
 async function main() {
-  const health = await request("GET", `${baseUrl}/actuator/health`, "");
-  if (health.status !== "UP") throw new Error(`API health is ${health.status}`);
+  await waitForApi();
 
   const tenant = await request("POST", `${baseUrl}/api/v1/tenants`, masterKey, {
     name: `compose-e2e-${runId}`,
