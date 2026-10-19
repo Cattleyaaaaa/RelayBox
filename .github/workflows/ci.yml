@@ -12,6 +12,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  compose-e2e:
+    name: Compose service handoff and recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Build and start the Compose stack
+        run: docker compose up --build --detach --wait
+      - name: Verify Outbox, RabbitMQ, Inbox, and recovery
+        run: node scripts/compose-e2e.mjs
+      - name: Stop Compose services
+        if: always()
+        run: docker compose down --remove-orphans --volumes
+
   integration-tests:
     name: Integration tests
     runs-on: ubuntu-latest

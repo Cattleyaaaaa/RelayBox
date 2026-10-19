@@ -1,0 +1,9 @@
+{
+  "scenario": "rabbitmq-outage-outbox-recovery",
+  "outageSeconds": 6,
+  "eventsAcceptedDuringOutage": 2,
+  "outboxAttemptsBeforeRecovery": [32, 0],
+  "publishedAfterRecovery": 2,
+  "deliveriesAfterRecovery": ["SUCCEEDED", "SUCCEEDED"],
+  "note": "The first row was retried while RabbitMQ was unavailable; the second row in the locked batch was not counted as attempted. Both were eventually published and delivered after RabbitMQ restarted."
+}

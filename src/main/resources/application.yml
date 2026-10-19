@@ -9,19 +9,48 @@ spring:
     enabled: true
   jackson:
     default-property-inclusion: non_null
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:relaybox}
+    password: ${RABBITMQ_PASSWORD:relaybox}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
 server:
   port: ${PORT:8080}
 relaybox:
   master-key: ${RELAYBOX_MASTER_KEY:local-master-key}
   rate-limit:
     default-events-per-minute: ${DEFAULT_EVENTS_PER_MINUTE:120}
+    redis-burst:
+      enabled: ${REDIS_BURST_LIMITER_ENABLED:false}
+      burst-window-seconds: ${REDIS_BURST_WINDOW_SECONDS:10}
+  delivery-service:
+    enabled: ${DELIVERY_SERVICE_ENABLED:false}
+    url: ${DELIVERY_SERVICE_URL:http://localhost:8081}
+    internal-token: ${INTERNAL_SERVICE_TOKEN:local-internal-key}
+  outbox:
+    enabled: ${DELIVERY_SERVICE_ENABLED:false}
+    poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:100}
+    batch-size: ${OUTBOX_BATCH_SIZE:40}
   webhook:
     allow-private-targets: ${ALLOW_PRIVATE_WEBHOOK_TARGETS:false}
+  circuit:
+    default-failure-threshold: ${CIRCUIT_FAILURE_THRESHOLD:5}
+    default-open-duration-seconds: ${CIRCUIT_OPEN_DURATION_SECONDS:30}
   test-receiver:
     enabled: ${TEST_RECEIVER_ENABLED:false}
+    chaos-first-delay-ms: ${CHAOS_FIRST_DELAY_MS:30000}
   worker:
+    enabled: ${WORKER_ENABLED:true}
     batch-size: ${WORKER_BATCH_SIZE:20}
+    concurrency: ${WORKER_CONCURRENCY:8}
+    max-concurrency: ${WORKER_MAX_CONCURRENCY:16}
+    queue-capacity: ${WORKER_QUEUE_CAPACITY:500}
     poll-interval-ms: ${WORKER_POLL_INTERVAL_MS:1000}
+    lease-seconds: ${WORKER_LEASE_SECONDS:120}
     max-attempts: ${DELIVERY_MAX_ATTEMPTS:8}
     retry-base-delay-seconds: ${RETRY_BASE_DELAY_SECONDS:5}
     retry-jitter-seconds: ${RETRY_JITTER_SECONDS:3}

@@ -1,0 +1,93 @@
+{
+  "runId": "bf1bf5d24aa5",
+  "startedAt": "2026-10-18T13:14:36.754Z",
+  "complete": true,
+  "environment": {
+    "platform": "win32 10.0.26300",
+    "hostLogicalCpus": 32,
+    "hostMemoryGiB": 31.2,
+    "dockerCpus": 32,
+    "dockerMemoryGiB": 15.2,
+    "runningWorkers": 1,
+    "receiver": "separate host Node.js process via host.docker.internal"
+  },
+  "workload": {
+    "count": 40,
+    "concurrency": 8,
+    "streams": 8,
+    "tenantRateLimitPerMinute": 10000,
+    "receiverUrl": "http://host.docker.internal:18089/hook"
+  },
+  "measurements": {
+    "published": {
+      "attempted": 40,
+      "accepted": 40,
+      "rejected": 0,
+      "seconds": 0.08,
+      "acceptedPerSecond": 511.35,
+      "p50LatencyMs": 11.89,
+      "p95LatencyMs": 25.47,
+      "p99LatencyMs": 28.36,
+      "errors": []
+    },
+    "delivery": {
+      "events": 40,
+      "deliveries": 40,
+      "succeeded": 40,
+      "dead": 0,
+      "pending": 0,
+      "in_flight": 0,
+      "attempts": 40,
+      "p50_delivery_ms": 2043.158,
+      "p95_delivery_ms": 4036.96365,
+      "complete": true,
+      "observedEndToEndSeconds": 4.67
+    },
+    "receiver": {
+      "received": 48,
+      "bytes": 9486
+    }
+  },
+  "rawPublishLatencyMs": [
+    20.63,
+    20.99,
+    21.31,
+    22.28,
+    24.19,
+    25.47,
+    26.29,
+    28.36,
+    11.08,
+    10.21,
+    12.89,
+    10.21,
+    9.67,
+    15.59,
+    11.77,
+    11.28,
+    11.89,
+    12.32,
+    13.22,
+    13.38,
+    10.76,
+    12.68,
+    19.92,
+    12.87,
+    16.45,
+    11.42,
+    10.26,
+    10.23,
+    10.27,
+    14.14,
+    10.38,
+    10.93,
+    15.19,
+    10.56,
+    9.66,
+    11.78,
+    12.67,
+    10.19,
+    10.77,
+    10.37
+  ]
+}

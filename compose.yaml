@@ -1,21 +1,79 @@
 services:
+  frontend:
+    image: relaybox-web:local
+    build:
+      context: ./frontend
+    ports:
+      - "127.0.0.1:3005:80"
+    depends_on:
+      - app
+    restart: unless-stopped
+
   app:
+    image: relaybox:local
     build:
       context: .
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/relaybox
       DB_USER: relaybox
       DB_PASSWORD: relaybox
+      SPRING_DATA_REDIS_HOST: redis
+      REDIS_BURST_LIMITER_ENABLED: "true"
+      REDIS_BURST_WINDOW_SECONDS: ${REDIS_BURST_WINDOW_SECONDS:-10}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USERNAME: relaybox
+      RABBITMQ_PASSWORD: relaybox
+      DELIVERY_SERVICE_ENABLED: "true"
+      DELIVERY_SERVICE_URL: http://delivery-service:8081
+      OUTBOX_POLL_INTERVAL_MS: ${OUTBOX_POLL_INTERVAL_MS:-100}
+      OUTBOX_BATCH_SIZE: ${OUTBOX_BATCH_SIZE:-40}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-local-internal-key}
       RELAYBOX_MASTER_KEY: ${RELAYBOX_MASTER_KEY:-local-master-key}
       TEST_RECEIVER_ENABLED: "true"
       ALLOW_PRIVATE_WEBHOOK_TARGETS: "true"
       DELIVERY_MAX_ATTEMPTS: ${DELIVERY_MAX_ATTEMPTS:-3}
       RETRY_BASE_DELAY_SECONDS: ${RETRY_BASE_DELAY_SECONDS:-1}
       RETRY_JITTER_SECONDS: ${RETRY_JITTER_SECONDS:-0}
+      WORKER_ENABLED: "false"
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+    restart: unless-stopped
+
+  delivery-service:
+    image: relaybox-delivery:local
+    build:
+      context: ./delivery-service
+    environment:
+      DB_URL: jdbc:postgresql://delivery-postgres:5432/relaybox_delivery
+      DB_USER: relaybox_delivery
+      DB_PASSWORD: relaybox_delivery
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USERNAME: relaybox
+      RABBITMQ_PASSWORD: relaybox
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-local-internal-key}
+      RELAYBOX_MASTER_KEY: ${RELAYBOX_MASTER_KEY:-local-master-key}
+      ALLOW_PRIVATE_WEBHOOK_TARGETS: "true"
+      DELIVERY_MAX_ATTEMPTS: ${DELIVERY_MAX_ATTEMPTS:-3}
+      RETRY_BASE_DELAY_SECONDS: ${RETRY_BASE_DELAY_SECONDS:-1}
+      RETRY_JITTER_SECONDS: ${RETRY_JITTER_SECONDS:-0}
+      WORKER_BATCH_SIZE: ${WORKER_BATCH_SIZE:-40}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-100}
+      WORKER_LEASE_SECONDS: ${WORKER_LEASE_SECONDS:-120}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-16}
+      WORKER_MAX_CONCURRENCY: ${WORKER_MAX_CONCURRENCY:-32}
+      WORKER_QUEUE_CAPACITY: ${WORKER_QUEUE_CAPACITY:-500}
+      SERVER_PORT: "8081"
+    depends_on:
+      delivery-postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
 
@@ -31,6 +89,44 @@ services:
       - relaybox-postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U relaybox -d relaybox"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: relaybox
+      RABBITMQ_DEFAULT_PASS: relaybox
+    ports:
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - relaybox-rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  delivery-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: relaybox_delivery
+      POSTGRES_USER: relaybox_delivery
+      POSTGRES_PASSWORD: relaybox_delivery
+    volumes:
+      - relaybox-delivery-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relaybox_delivery -d relaybox_delivery"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -76,4 +172,6 @@ services:
 
 volumes:
   relaybox-postgres:
+  relaybox-delivery-postgres:
+  relaybox-rabbitmq:
   relaybox-maven-cache:

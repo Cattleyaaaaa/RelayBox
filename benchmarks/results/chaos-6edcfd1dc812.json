@@ -1,0 +1,55 @@
+{
+  "scenario": "delivery-service-crash-lease-recovery",
+  "recordedAt": "2026-10-19T07:07:34.6352238Z",
+  "leaseSeconds": 12,
+  "eventId": "6e472e48-701a-4096-9977-d32213b6c2c4",
+  "deliveryId": "7708b5bc-d84e-41ad-b502-fd8a14c919ad",
+  "finalStatus": "SUCCEEDED",
+  "firstWorkerKilledAfterReceiverAccepted": true,
+  "workerANetworkAliases": [
+    "relaybox-chaos-a-6edcfd1d",
+    "delivery-service"
+  ],
+  "attempts": [
+    {
+      "id": "fcbe5ae2-f290-40fb-87db-5d98adace680",
+      "attemptNumber": 1,
+      "status": "FAILED",
+      "error": "worker lease expired before completion",
+      "durationMs": 12183,
+      "startedAt": "2026-10-19T07:07:16.890747Z",
+      "completedAt": "2026-10-19T07:07:29.074652Z"
+    },
+    {
+      "id": "074050f7-2ccc-4144-98f1-ba9abb02832a",
+      "attemptNumber": 2,
+      "status": "SUCCEEDED",
+      "responseCode": 200,
+      "durationMs": 54,
+      "startedAt": "2026-10-19T07:07:29.074652Z",
+      "completedAt": "2026-10-19T07:07:29.128793Z"
+    }
+  ],
+  "receiverAppliedBusinessEffects": 1,
+  "receiverReceipts": [
+    {
+      "requestNumber": 1,
+      "receivedAt": "2026-10-19T07:07:16.934383218Z",
+      "deliveryId": "7708b5bc-d84e-41ad-b502-fd8a14c919ad",
+      "eventId": "6e472e48-701a-4096-9977-d32213b6c2c4",
+      "businessEffectApplied": true,
+      "idempotencyConflict": false,
+      "responseCode": 200
+    },
+    {
+      "requestNumber": 2,
+      "receivedAt": "2026-10-19T07:07:29.117439157Z",
+      "deliveryId": "7708b5bc-d84e-41ad-b502-fd8a14c919ad",
+      "eventId": "6e472e48-701a-4096-9977-d32213b6c2c4",
+      "businessEffectApplied": false,
+      "idempotencyConflict": false,
+      "responseCode": 200
+    }
+  ],
+  "note": "Two physical HTTP requests share one delivery ID; receiver deduplication applies the demo business effect once."
+}

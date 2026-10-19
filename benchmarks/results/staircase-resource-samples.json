@@ -1,0 +1,492 @@
+[
+  {
+    "sampledAt": "2026-10-19T06:57:24.8836032Z",
+    "containers": [
+      {
+        "BlockIO": "0B / 49.2kB",
+        "CPUPerc": "9.00%",
+        "Container": "bf29ce5c413d1ba3a73c26166cefbc7c4679b161bc974957d637ebe8841ca71e",
+        "ID": "bf29ce5c413d",
+        "MemPerc": "1.93%",
+        "MemUsage": "300.5MiB / 15.22GiB",
+        "Name": "backend-delivery-service-1",
+        "NetIO": "8.21MB / 9.75MB",
+        "PIDs": "120"
+      },
+      {
+        "BlockIO": "0B / 131kB",
+        "CPUPerc": "9.28%",
+        "Container": "59eeae696128ef93a3f2f6575295603010542b8ce1dcbf1a58236a3071c1d6f4",
+        "ID": "59eeae696128",
+        "MemPerc": "2.08%",
+        "MemUsage": "323.6MiB / 15.22GiB",
+        "Name": "backend-app-1",
+        "NetIO": "7.62MB / 11.2MB",
+        "PIDs": "103"
+      },
+      {
+        "BlockIO": "0B / 1.2MB",
+        "CPUPerc": "3.64%",
+        "Container": "80dcef6f533a2d0d6c5652de9fe00138fdae5315796d76fe25920139557aafee",
+        "ID": "80dcef6f533a",
+        "MemPerc": "0.82%",
+        "MemUsage": "127.9MiB / 15.22GiB",
+        "Name": "backend-rabbitmq-1",
+        "NetIO": "11.4MB / 11.7MB",
+        "PIDs": "85"
+      },
+      {
+        "BlockIO": "37.7MB / 282MB",
+        "CPUPerc": "14.18%",
+        "Container": "e6d521fda0f810917e31ac698a241829ce1342279dcbf9991dffd26b2f1c3ef3",
+        "ID": "e6d521fda0f8",
+        "MemPerc": "0.53%",
+        "MemUsage": "82.16MiB / 15.22GiB",
+        "Name": "backend-delivery-postgres-1",
+        "NetIO": "232MB / 80.1MB",
+        "PIDs": "16"
+      },
+      {
+        "BlockIO": "0B / 0B",
+        "CPUPerc": "0.56%",
+        "Container": "4614de56009e5f03ecb8304fc289c15afefbabad40798da67af0944940ecb259",
+        "ID": "4614de56009e",
+        "MemPerc": "0.03%",
+        "MemUsage": "5.395MiB / 15.22GiB",
+        "Name": "backend-redis-1",
+        "NetIO": "3.11MB / 1.14MB",
+        "PIDs": "6"
+      },
+      {
+        "BlockIO": "6.12MB / 8.19kB",
+        "CPUPerc": "0.00%",
+        "Container": "06afb139256b156b2f379bf9de732865fec375fea38f72dc6f49abeac7b94d41",
+        "ID": "06afb139256b",
+        "MemPerc": "0.15%",
+        "MemUsage": "23.17MiB / 15.22GiB",
+        "Name": "backend-frontend-1",
+        "NetIO": "219kB / 1.07MB",
+        "PIDs": "33"
+      },
+      {
+        "BlockIO": "42MB / 12.1MB",
+        "CPUPerc": "2.57%",
+        "Container": "e742b2b166781ae21658115dfe9752bc26b2d4642046c87d8776f75d6fb307d0",
+        "ID": "e742b2b16678",
+        "MemPerc": "0.18%",
+        "MemUsage": "28.34MiB / 15.22GiB",
+        "Name": "backend-postgres-test-1",
+        "NetIO": "1.01MB / 455kB",
+        "PIDs": "6"
+      },
+      {
+        "BlockIO": "95.3MB / 1.77GB",
+        "CPUPerc": "2.70%",
+        "Container": "a3a2c0a01e3df738429b8b070941a36e8eaa55ef56b47641e95a9776cfff344d",
+        "ID": "a3a2c0a01e3d",
+        "MemPerc": "0.96%",
+        "MemUsage": "150.2MiB / 15.22GiB",
+        "Name": "backend-postgres-1",
+        "NetIO": "327MB / 182MB",
+        "PIDs": "16"
+      }
+    ],
+    "rabbitQueues": [
+      "name\tmessages_ready\tmessages_unacknowledged",
+      "relaybox.delivery.events.dead\t1\t0",
+      "relaybox.delivery.events\t0\t0"
+    ]
+  },
+  {
+    "sampledAt": "2026-10-19T06:57:33.4956430Z",
+    "containers": [
+      {
+        "BlockIO": "0B / 49.2kB",
+        "CPUPerc": "50.53%",
+        "Container": "bf29ce5c413d1ba3a73c26166cefbc7c4679b161bc974957d637ebe8841ca71e",
+        "ID": "bf29ce5c413d",
+        "MemPerc": "1.92%",
+        "MemUsage": "300MiB / 15.22GiB",
+        "Name": "backend-delivery-service-1",
+        "NetIO": "9.77MB / 11.6MB",
+        "PIDs": "121"
+      },
+      {
+        "BlockIO": "0B / 131kB",
+        "CPUPerc": "30.72%",
+        "Container": "59eeae696128ef93a3f2f6575295603010542b8ce1dcbf1a58236a3071c1d6f4",
+        "ID": "59eeae696128",
+        "MemPerc": "2.10%",
+        "MemUsage": "327.3MiB / 15.22GiB",
+        "Name": "backend-app-1",
+        "NetIO": "10MB / 14.9MB",
+        "PIDs": "101"
+      },
+      {
+        "BlockIO": "0B / 1.2MB",
+        "CPUPerc": "507.24%",
+        "Container": "80dcef6f533a2d0d6c5652de9fe00138fdae5315796d76fe25920139557aafee",
+        "ID": "80dcef6f533a",
+        "MemPerc": "1.40%",
+        "MemUsage": "217.9MiB / 15.22GiB",
+        "Name": "backend-rabbitmq-1",
+        "NetIO": "12MB / 12.2MB",
+        "PIDs": "167"
+      },
+      {
+        "BlockIO": "37.7MB / 290MB",
+        "CPUPerc": "15.21%",
+        "Container": "e6d521fda0f810917e31ac698a241829ce1342279dcbf9991dffd26b2f1c3ef3",
+        "ID": "e6d521fda0f8",
+        "MemPerc": "0.53%",
+        "MemUsage": "82.02MiB / 15.22GiB",
+        "Name": "backend-delivery-postgres-1",
+        "NetIO": "233MB / 81MB",
+        "PIDs": "16"
+      },
+      {
+        "BlockIO": "0B / 0B",
+        "CPUPerc": "2.03%",
+        "Container": "4614de56009e5f03ecb8304fc289c15afefbabad40798da67af0944940ecb259",
+        "ID": "4614de56009e",
+        "MemPerc": "0.04%",
+        "MemUsage": "5.82MiB / 15.22GiB",
+        "Name": "backend-redis-1",
+        "NetIO": "3.42MB / 1.24MB",
+        "PIDs": "6"
+      },
+      {
+        "BlockIO": "6.12MB / 8.19kB",
+        "CPUPerc": "0.00%",
+        "Container": "06afb139256b156b2f379bf9de732865fec375fea38f72dc6f49abeac7b94d41",
+        "ID": "06afb139256b",
+        "MemPerc": "0.15%",
+        "MemUsage": "23.17MiB / 15.22GiB",
+        "Name": "backend-frontend-1",
+        "NetIO": "219kB / 1.07MB",
+        "PIDs": "33"
+      },
+      {
+        "BlockIO": "42MB / 12.1MB",
+        "CPUPerc": "2.79%",
+        "Container": "e742b2b166781ae21658115dfe9752bc26b2d4642046c87d8776f75d6fb307d0",
+        "ID": "e742b2b16678",
+        "MemPerc": "0.18%",
+        "MemUsage": "27.82MiB / 15.22GiB",
+        "Name": "backend-postgres-test-1",
+        "NetIO": "1.01MB / 455kB",
+        "PIDs": "6"
+      },
+      {
+        "BlockIO": "95.3MB / 1.79GB",
+        "CPUPerc": "23.70%",
+        "Container": "a3a2c0a01e3df738429b8b070941a36e8eaa55ef56b47641e95a9776cfff344d",
+        "ID": "a3a2c0a01e3d",
+        "MemPerc": "0.97%",
+        "MemUsage": "151.6MiB / 15.22GiB",
+        "Name": "backend-postgres-1",
+        "NetIO": "329MB / 183MB",
+        "PIDs": "16"
+      }
+    ],
+    "rabbitQueues": [
+      "name\tmessages_ready\tmessages_unacknowledged",
+      "relaybox.delivery.events.dead\t1\t0",
+      "relaybox.delivery.events\t0\t0"
+    ]
+  },
+  {
+    "sampledAt": "2026-10-19T06:57:42.0442461Z",
+    "containers": [
+      {
+        "BlockIO": "0B / 49.2kB",
+        "CPUPerc": "10.76%",
+        "Container": "bf29ce5c413d1ba3a73c26166cefbc7c4679b161bc974957d637ebe8841ca71e",
+        "ID": "bf29ce5c413d",
+        "MemPerc": "1.93%",
+        "MemUsage": "301MiB / 15.22GiB",
+        "Name": "backend-delivery-service-1",
+        "NetIO": "11.5MB / 13.6MB",
+        "PIDs": "120"
+      },
+      {
+        "BlockIO": "0B / 131kB",
+        "CPUPerc": "45.68%",
+        "Container": "59eeae696128ef93a3f2f6575295603010542b8ce1dcbf1a58236a3071c1d6f4",
+        "ID": "59eeae696128",
+        "MemPerc": "2.09%",
+        "MemUsage": "326.2MiB / 15.22GiB",
+        "Name": "backend-app-1",
+        "NetIO": "12.4MB / 18.5MB",
+        "PIDs": "101"
+      },
+      {
+        "BlockIO": "0B / 1.2MB",
+        "CPUPerc": "5.86%",
+        "Container": "80dcef6f533a2d0d6c5652de9fe00138fdae5315796d76fe25920139557aafee",
+        "ID": "80dcef6f533a",
+        "MemPerc": "0.81%",
+        "MemUsage": "126.5MiB / 15.22GiB",
+        "Name": "backend-rabbitmq-1",
+        "NetIO": "12.6MB / 12.8MB",
+        "PIDs": "85"
+      },
+      {
+        "BlockIO": "37.7MB / 300MB",
+        "CPUPerc": "11.97%",
+        "Container": "e6d521fda0f810917e31ac698a241829ce1342279dcbf9991dffd26b2f1c3ef3",
+        "ID": "e6d521fda0f8",
+        "MemPerc": "0.53%",
+        "MemUsage": "83.11MiB / 15.22GiB",
+        "Name": "backend-delivery-postgres-1",
+        "NetIO": "235MB / 81.9MB",
+        "PIDs": "16"
+      },
+      {
+        "BlockIO": "0B / 0B",
+        "CPUPerc": "1.83%",
+        "Container": "4614de56009e5f03ecb8304fc289c15afefbabad40798da67af0944940ecb259",
+        "ID": "4614de56009e",
+        "MemPerc": "0.04%",
+        "MemUsage": "5.559MiB / 15.22GiB",
+        "Name": "backend-redis-1",
+        "NetIO": "3.75MB / 1.35MB",
+        "PIDs": "6"
+      },
+      {
+        "BlockIO": "6.12MB / 8.19kB",
+        "CPUPerc": "0.00%",
+        "Container": "06afb139256b156b2f379bf9de732865fec375fea38f72dc6f49abeac7b94d41",
+        "ID": "06afb139256b",
+        "MemPerc": "0.15%",
+        "MemUsage": "23.17MiB / 15.22GiB",
+        "Name": "backend-frontend-1",
+        "NetIO": "219kB / 1.07MB",
+        "PIDs": "33"
+      },
+      {
+        "BlockIO": "42MB / 12.1MB",
+        "CPUPerc": "0.00%",
+        "Container": "e742b2b166781ae21658115dfe9752bc26b2d4642046c87d8776f75d6fb307d0",
+        "ID": "e742b2b16678",
+        "MemPerc": "0.17%",
+        "MemUsage": "27.05MiB / 15.22GiB",
+        "Name": "backend-postgres-test-1",
+        "NetIO": "1.01MB / 455kB",
+        "PIDs": "6"
+      },
+      {
+        "BlockIO": "95.3MB / 1.81GB",
+        "CPUPerc": "22.37%",
+        "Container": "a3a2c0a01e3df738429b8b070941a36e8eaa55ef56b47641e95a9776cfff344d",
+        "ID": "a3a2c0a01e3d",
+        "MemPerc": "0.99%",
+        "MemUsage": "154.5MiB / 15.22GiB",
+        "Name": "backend-postgres-1",
+        "NetIO": "332MB / 185MB",
+        "PIDs": "16"
+      }
+    ],
+    "rabbitQueues": [
+      "name\tmessages_ready\tmessages_unacknowledged",
+      "relaybox.delivery.events.dead\t1\t0",
+      "relaybox.delivery.events\t0\t5"
+    ]
+  },
+  {
+    "sampledAt": "2026-10-19T06:57:50.6378509Z",
+    "containers": [
+      {
+        "BlockIO": "0B / 65.5kB",
+        "CPUPerc": "14.25%",
+        "Container": "bf29ce5c413d1ba3a73c26166cefbc7c4679b161bc974957d637ebe8841ca71e",
+        "ID": "bf29ce5c413d",
+        "MemPerc": "1.94%",
+        "MemUsage": "301.8MiB / 15.22GiB",
+        "Name": "backend-delivery-service-1",
+        "NetIO": "13.1MB / 15.4MB",
+        "PIDs": "120"
+      },
+      {
+        "BlockIO": "0B / 147kB",
+        "CPUPerc": "6.35%",
+        "Container": "59eeae696128ef93a3f2f6575295603010542b8ce1dcbf1a58236a3071c1d6f4",
+        "ID": "59eeae696128",
+        "MemPerc": "2.08%",
+        "MemUsage": "324.5MiB / 15.22GiB",
+        "Name": "backend-app-1",
+        "NetIO": "14.2MB / 21.2MB",
+        "PIDs": "101"
+      },
+      {
+        "BlockIO": "0B / 1.2MB",
+        "CPUPerc": "118.39%",
+        "Container": "80dcef6f533a2d0d6c5652de9fe00138fdae5315796d76fe25920139557aafee",
+        "ID": "80dcef6f533a",
+        "MemPerc": "1.19%",
+        "MemUsage": "185.4MiB / 15.22GiB",
+        "Name": "backend-rabbitmq-1",
+        "NetIO": "13.2MB / 13.5MB",
+        "PIDs": "167"
+      },
+      {
+        "BlockIO": "37.7MB / 310MB",
+        "CPUPerc": "14.67%",
+        "Container": "e6d521fda0f810917e31ac698a241829ce1342279dcbf9991dffd26b2f1c3ef3",
+        "ID": "e6d521fda0f8",
+        "MemPerc": "0.54%",
+        "MemUsage": "84.56MiB / 15.22GiB",
+        "Name": "backend-delivery-postgres-1",
+        "NetIO": "236MB / 83MB",
+        "PIDs": "16"
+      },
+      {
+        "BlockIO": "0B / 0B",
+        "CPUPerc": "0.29%",
+        "Container": "4614de56009e5f03ecb8304fc289c15afefbabad40798da67af0944940ecb259",
+        "ID": "4614de56009e",
+        "MemPerc": "0.03%",
+        "MemUsage": "5.09MiB / 15.22GiB",
+        "Name": "backend-redis-1",
+        "NetIO": "3.9MB / 1.4MB",
+        "PIDs": "6"
+      },
+      {
+        "BlockIO": "6.12MB / 8.19kB",
+        "CPUPerc": "0.00%",
+        "Container": "06afb139256b156b2f379bf9de732865fec375fea38f72dc6f49abeac7b94d41",
+        "ID": "06afb139256b",
+        "MemPerc": "0.15%",
+        "MemUsage": "23.17MiB / 15.22GiB",
+        "Name": "backend-frontend-1",
+        "NetIO": "219kB / 1.07MB",
+        "PIDs": "33"
+      },
+      {
+        "BlockIO": "42MB / 12.1MB",
+        "CPUPerc": "0.00%",
+        "Container": "e742b2b166781ae21658115dfe9752bc26b2d4642046c87d8776f75d6fb307d0",
+        "ID": "e742b2b16678",
+        "MemPerc": "0.18%",
+        "MemUsage": "27.29MiB / 15.22GiB",
+        "Name": "backend-postgres-test-1",
+        "NetIO": "1.01MB / 455kB",
+        "PIDs": "6"
+      },
+      {
+        "BlockIO": "95.3MB / 1.83GB",
+        "CPUPerc": "3.28%",
+        "Container": "a3a2c0a01e3df738429b8b070941a36e8eaa55ef56b47641e95a9776cfff344d",
+        "ID": "a3a2c0a01e3d",
+        "MemPerc": "0.98%",
+        "MemUsage": "152.7MiB / 15.22GiB",
+        "Name": "backend-postgres-1",
+        "NetIO": "334MB / 186MB",
+        "PIDs": "16"
+      }
+    ],
+    "rabbitQueues": [
+      "name\tmessages_ready\tmessages_unacknowledged",
+      "relaybox.delivery.events.dead\t1\t0",
+      "relaybox.delivery.events\t0\t0"
+    ]
+  },
+  {
+    "sampledAt": "2026-10-19T06:57:59.1691063Z",
+    "containers": [
+      {
+        "BlockIO": "0B / 65.5kB",
+        "CPUPerc": "25.18%",
+        "Container": "bf29ce5c413d1ba3a73c26166cefbc7c4679b161bc974957d637ebe8841ca71e",
+        "ID": "bf29ce5c413d",
+        "MemPerc": "1.94%",
+        "MemUsage": "301.7MiB / 15.22GiB",
+        "Name": "backend-delivery-service-1",
+        "NetIO": "14.9MB / 17.5MB",
+        "PIDs": "120"
+      },
+      {
+        "BlockIO": "0B / 147kB",
+        "CPUPerc": "2.38%",
+        "Container": "59eeae696128ef93a3f2f6575295603010542b8ce1dcbf1a58236a3071c1d6f4",
+        "ID": "59eeae696128",
+        "MemPerc": "2.09%",
+        "MemUsage": "325.3MiB / 15.22GiB",
+        "Name": "backend-app-1",
+        "NetIO": "14.7MB / 21.8MB",
+        "PIDs": "101"
+      },
+      {
+        "BlockIO": "0B / 1.2MB",
+        "CPUPerc": "4.51%",
+        "Container": "80dcef6f533a2d0d6c5652de9fe00138fdae5315796d76fe25920139557aafee",
+        "ID": "80dcef6f533a",
+        "MemPerc": "0.83%",
+        "MemUsage": "129.7MiB / 15.22GiB",
+        "Name": "backend-rabbitmq-1",
+        "NetIO": "13.7MB / 14MB",
+        "PIDs": "85"
+      },
+      {
+        "BlockIO": "37.7MB / 319MB",
+        "CPUPerc": "16.02%",
+        "Container": "e6d521fda0f810917e31ac698a241829ce1342279dcbf9991dffd26b2f1c3ef3",
+        "ID": "e6d521fda0f8",
+        "MemPerc": "0.55%",
+        "MemUsage": "85.68MiB / 15.22GiB",
+        "Name": "backend-delivery-postgres-1",
+        "NetIO": "238MB / 83.9MB",
+        "PIDs": "16"
+      },
+      {
+        "BlockIO": "0B / 0B",
+        "CPUPerc": "0.24%",
+        "Container": "4614de56009e5f03ecb8304fc289c15afefbabad40798da67af0944940ecb259",
+        "ID": "4614de56009e",
+        "MemPerc": "0.03%",
+        "MemUsage": "4.359MiB / 15.22GiB",
+        "Name": "backend-redis-1",
+        "NetIO": "3.9MB / 1.4MB",
+        "PIDs": "6"
+      },
+      {
+        "BlockIO": "6.12MB / 8.19kB",
+        "CPUPerc": "0.00%",
+        "Container": "06afb139256b156b2f379bf9de732865fec375fea38f72dc6f49abeac7b94d41",
+        "ID": "06afb139256b",
+        "MemPerc": "0.15%",
+        "MemUsage": "23.17MiB / 15.22GiB",
+        "Name": "backend-frontend-1",
+        "NetIO": "219kB / 1.07MB",
+        "PIDs": "33"
+      },
+      {
+        "BlockIO": "42MB / 12.1MB",
+        "CPUPerc": "0.00%",
+        "Container": "e742b2b166781ae21658115dfe9752bc26b2d4642046c87d8776f75d6fb307d0",
+        "ID": "e742b2b16678",
+        "MemPerc": "0.18%",
+        "MemUsage": "27.76MiB / 15.22GiB",
+        "Name": "backend-postgres-test-1",
+        "NetIO": "1.01MB / 455kB",
+        "PIDs": "6"
+      },
+      {
+        "BlockIO": "95.3MB / 1.83GB",
+        "CPUPerc": "3.00%",
+        "Container": "a3a2c0a01e3df738429b8b070941a36e8eaa55ef56b47641e95a9776cfff344d",
+        "ID": "a3a2c0a01e3d",
+        "MemPerc": "0.98%",
+        "MemUsage": "152.2MiB / 15.22GiB",
+        "Name": "backend-postgres-1",
+        "NetIO": "334MB / 187MB",
+        "PIDs": "16"
+      }
+    ],
+    "rabbitQueues": [
+      "name\tmessages_ready\tmessages_unacknowledged",
+      "relaybox.delivery.events.dead\t1\t0",
+      "relaybox.delivery.events\t0\t0"
+    ]
+  }
+]

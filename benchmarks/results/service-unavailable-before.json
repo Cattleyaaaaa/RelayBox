@@ -1,0 +1,7 @@
+{
+  "scenario": "delivery-service-unavailable",
+  "clientTimeoutSeconds": 15,
+  "receivedHttpResponse": false,
+  "error": "The request was canceled due to the configured HttpClient.Timeout of 15 seconds elapsing.",
+  "note": "GET /dev/receiver/chaos/report after stopping Delivery Service. Compose service was restored in finally. No server HTTP status was observed."
+}

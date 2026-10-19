@@ -11,6 +11,7 @@ relaybox:
     allow-private-targets: true
   test-receiver:
     enabled: true
+    chaos-first-delay-ms: 20
   worker:
     batch-size: 20
     poll-interval-ms: ${WORKER_POLL_INTERVAL_MS:100}

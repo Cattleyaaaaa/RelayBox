@@ -1,0 +1,8 @@
+{
+  "recordedAt": "2026-10-19T07:08:08.5298856Z",
+  "scenario": "delivery-service-unavailable",
+  "status": 503,
+  "elapsedMs": 4123,
+  "retryAfter": "2",
+  "body": "{\"detail\":\"Delivery service is temporarily unavailable; retry later\",\"instance\":\"/dev/receiver/chaos/report\",\"status\":503,\"title\":\"Service Unavailable\"}"
+}

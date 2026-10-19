@@ -1,0 +1,47 @@
+﻿{
+    "scenario":  "worker-crash-lease-recovery",
+    "recordedAt":  "2026-10-19T02:00:46.7518774Z",
+    "leaseSeconds":  12,
+    "eventId":  "70a076b6-c16e-4a77-ba10-8e6e9fd28c84",
+    "deliveryId":  "ec4f5104-9a38-488a-9197-48e2629c3ca1",
+    "finalStatus":  "SUCCEEDED",
+    "firstWorkerKilledAfterReceiverAccepted":  true,
+    "attempts":  [
+                     {
+                         "id":  "4ab38d2c-6f3d-4c9c-8f36-7c0b158a660d",
+                         "attemptNumber":  1,
+                         "status":  "FAILED",
+                         "error":  "worker lease expired before completion",
+                         "durationMs":  12012,
+                         "startedAt":  "2026-10-19T02:00:34.639510Z",
+                         "completedAt":  "2026-10-19T02:00:46.651904Z"
+                     },
+                     {
+                         "id":  "ff06daa2-6bf1-43e8-91f4-ebd8ea289119",
+                         "attemptNumber":  2,
+                         "status":  "SUCCEEDED",
+                         "responseCode":  200,
+                         "durationMs":  44,
+                         "startedAt":  "2026-10-19T02:00:46.651904Z",
+                         "completedAt":  "2026-10-19T02:00:46.696543Z"
+                     }
+                 ],
+    "receiverAppliedBusinessEffects":  1,
+    "receiverReceipts":  [
+                             {
+                                 "requestNumber":  1,
+                                 "receivedAt":  "2026-10-19T02:00:34.705392877Z",
+                                 "deliveryId":  "ec4f5104-9a38-488a-9197-48e2629c3ca1",
+                                 "eventId":  "70a076b6-c16e-4a77-ba10-8e6e9fd28c84",
+                                 "businessEffectApplied":  true
+                             },
+                             {
+                                 "requestNumber":  2,
+                                 "receivedAt":  "2026-10-19T02:00:46.687431015Z",
+                                 "deliveryId":  "ec4f5104-9a38-488a-9197-48e2629c3ca1",
+                                 "eventId":  "70a076b6-c16e-4a77-ba10-8e6e9fd28c84",
+                                 "businessEffectApplied":  false
+                             }
+                         ],
+    "note":  "Two physical HTTP requests share one delivery ID; receiver deduplication applies the demo business effect once."
+}

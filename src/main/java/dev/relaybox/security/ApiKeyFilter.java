@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import dev.relaybox.service.TenantEventRateLimiter;
+import dev.relaybox.service.TenantBurstRateLimiter;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -23,12 +24,14 @@ public class ApiKeyFilter extends OncePerRequestFilter {
     private final byte[] masterKey;
     private final JdbcTemplate jdbc;
     private final TenantEventRateLimiter rateLimiter;
+    private final TenantBurstRateLimiter burstRateLimiter;
 
     public ApiKeyFilter(@Value("${relaybox.master-key}") String masterKey, JdbcTemplate jdbc,
-                        TenantEventRateLimiter rateLimiter) {
+                        TenantEventRateLimiter rateLimiter, TenantBurstRateLimiter burstRateLimiter) {
         this.masterKey = masterKey.getBytes(StandardCharsets.UTF_8);
         this.jdbc = jdbc;
         this.rateLimiter = rateLimiter;
+        this.burstRateLimiter = burstRateLimiter;
     }
 
     @Override
@@ -69,6 +72,18 @@ public class ApiKeyFilter extends OncePerRequestFilter {
         request.setAttribute("tenantId", tenant.id());
         request.setAttribute("apiKeyHash", apiKeyHash);
         if ("POST".equalsIgnoreCase(request.getMethod()) && "/api/v1/events".equals(request.getRequestURI())) {
+            TenantBurstRateLimiter.Decision burstDecision = burstRateLimiter.acquire(
+                    tenant.id(), tenant.eventRateLimitPerMinute());
+            if (burstDecision.enabled()) {
+                if (burstDecision.remaining() >= 0) {
+                    response.setHeader("X-RateLimit-Burst-Remaining", Integer.toString(burstDecision.remaining()));
+                }
+                if (!burstDecision.allowed()) {
+                    response.setHeader("Retry-After", Integer.toString(burstDecision.retryAfterSeconds()));
+                    response.sendError(HttpStatus.TOO_MANY_REQUESTS.value(), "tenant burst rate limit exceeded");
+                    return;
+                }
+            }
             TenantEventRateLimiter.Decision decision = rateLimiter.acquire(tenant.id(), tenant.eventRateLimitPerMinute());
             response.setHeader("X-RateLimit-Limit", Integer.toString(decision.limit()));
             response.setHeader("X-RateLimit-Remaining", Integer.toString(decision.remaining()));

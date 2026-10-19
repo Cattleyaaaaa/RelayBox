@@ -2,6 +2,7 @@ package dev.relaybox;
 
 import dev.relaybox.service.DeliveryQueue;
 import dev.relaybox.service.DeliveryQueue.DeliveryTask;
+import dev.relaybox.service.WebhookService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +32,9 @@ class DeliveryQueueIntegrationTest {
     @Autowired
     private DeliveryQueue queue;
 
+    @Autowired
+    private WebhookService webhookService;
+
     private UUID tenantId;
     private UUID endpointId;
 
@@ -55,7 +59,14 @@ class DeliveryQueueIntegrationTest {
     @Test
     void concurrentWorkersClaimDistinctDeliveries() throws Exception {
         int deliveryCount = 10;
-        for (int index = 0; index < deliveryCount; index++) insertDelivery(4);
+        for (int index = 0; index < deliveryCount; index++) {
+            UUID independentEndpoint = UUID.randomUUID();
+            jdbc.update("""
+                    INSERT INTO webhook_endpoint (id, tenant_id, url, signing_secret, event_types)
+                    VALUES (?, ?, 'https://example.com/hook', 'c2VjcmV0', '[\"order.created\"]'::jsonb)
+                    """, independentEndpoint, tenantId);
+            insertDelivery(independentEndpoint, 4);
+        }
 
         ExecutorService workers = Executors.newFixedThreadPool(2);
         try {
@@ -67,14 +78,15 @@ class DeliveryQueueIntegrationTest {
 
             assertThat(claimed).hasSize(8);
             assertThat(claimed.stream().map(DeliveryTask::deliveryId).distinct()).hasSize(8);
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM webhook_delivery WHERE endpoint_id = ? AND status = 'PENDING'",
-                    Integer.class, endpointId))
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM webhook_delivery WHERE status = 'PENDING'",
+                    Integer.class))
                     .isEqualTo(2);
             assertThat(jdbc.queryForObject("""
                     SELECT count(*) FROM webhook_delivery_attempt a
                     JOIN webhook_delivery d ON d.id = a.delivery_id
-                    WHERE d.endpoint_id = ?
-                    """, Integer.class, endpointId))
+                    JOIN webhook_event ev ON ev.id = d.event_id
+                    WHERE ev.tenant_id = ?
+                    """, Integer.class, tenantId))
                     .isEqualTo(8);
         } finally {
             workers.shutdownNow();
@@ -115,17 +127,97 @@ class DeliveryQueueIntegrationTest {
                 String.class, deliveryId)).isEqualTo("FAILED");
     }
 
+    @Test
+    void endpointCircuitOpensAndClosesAfterSuccessfulHalfOpenProbe() {
+        UUID deliveryId = insertDelivery(3);
+        jdbc.update("UPDATE webhook_endpoint SET circuit_failure_threshold = 1, circuit_open_duration_seconds = 30 WHERE id = ?", endpointId);
+
+        DeliveryTask failedAttempt = queue.claimBatch().get(0);
+        queue.finish(failedAttempt, 500, "receiver unavailable");
+
+        assertThat(jdbc.queryForObject("SELECT circuit_state FROM webhook_endpoint WHERE id = ?", String.class, endpointId))
+                .isEqualTo("OPEN");
+        assertThat(jdbc.queryForObject("SELECT consecutive_failures FROM webhook_endpoint WHERE id = ?", Integer.class, endpointId))
+                .isEqualTo(1);
+
+        // Make both the cooldown and the normal retry delay elapsed without making the test wait.
+        jdbc.update("UPDATE webhook_endpoint SET circuit_open_until = now() - interval '1 second' WHERE id = ?", endpointId);
+        jdbc.update("UPDATE webhook_delivery SET next_attempt_at = now() WHERE id = ?", deliveryId);
+        List<DeliveryTask> probe = queue.claimBatch();
+
+        assertThat(probe).hasSize(1);
+        assertThat(probe.get(0).attemptCount()).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT circuit_state FROM webhook_endpoint WHERE id = ?", String.class, endpointId))
+                .isEqualTo("HALF_OPEN");
+        assertThat(queue.claimBatch()).isEmpty(); // The endpoint-level probe lease prevents a second probe.
+
+        queue.finish(probe.get(0), 200, null);
+        assertThat(jdbc.queryForObject("SELECT circuit_state FROM webhook_endpoint WHERE id = ?", String.class, endpointId))
+                .isEqualTo("CLOSED");
+        assertThat(jdbc.queryForObject("SELECT consecutive_failures FROM webhook_endpoint WHERE id = ?", Integer.class, endpointId))
+                .isZero();
+    }
+
+    @Test
+    void endpointDeliveryOrderIsPreservedAcrossRetryAndWorkerClaim() {
+        UUID first = insertDelivery(3);
+        UUID second = insertDelivery(3);
+        UUID third = insertDelivery(3);
+
+        List<DeliveryTask> firstClaim = queue.claimBatch();
+        assertThat(firstClaim).extracting(DeliveryTask::deliveryId).containsExactly(first);
+        queue.finish(firstClaim.get(0), 500, "temporary receiver failure");
+
+        // A retry at the head of the endpoint queue must block later sequence numbers.
+        jdbc.update("UPDATE webhook_delivery SET next_attempt_at = now() WHERE id = ?", first);
+        List<DeliveryTask> retry = queue.claimBatch();
+        assertThat(retry).extracting(DeliveryTask::deliveryId).containsExactly(first);
+        queue.finish(retry.get(0), 200, null);
+
+        List<DeliveryTask> next = queue.claimBatch();
+        assertThat(next).extracting(DeliveryTask::deliveryId).containsExactly(second);
+        assertThat(jdbc.queryForObject("SELECT sequence_number FROM webhook_delivery WHERE id = ?", Long.class, first))
+                .isLessThan(jdbc.queryForObject("SELECT sequence_number FROM webhook_delivery WHERE id = ?", Long.class, second));
+        assertThat(jdbc.queryForObject("SELECT sequence_number FROM webhook_delivery WHERE id = ?", Long.class, second))
+                .isLessThan(jdbc.queryForObject("SELECT sequence_number FROM webhook_delivery WHERE id = ?", Long.class, third));
+    }
+
+    @Test
+    void replayedDeliveryIsPlacedAtTheEndpointQueueTail() {
+        UUID deadDelivery = insertDelivery(1);
+        UUID nextDelivery = insertDelivery(3);
+        jdbc.update("UPDATE webhook_delivery SET status = 'DEAD' WHERE id = ?", deadDelivery);
+
+        webhookService.replay(tenantId, deadDelivery);
+
+        assertThat(jdbc.queryForObject("SELECT sequence_number FROM webhook_delivery WHERE id = ?", Long.class, deadDelivery))
+                .isEqualTo(3L);
+        List<DeliveryTask> firstClaim = queue.claimBatch();
+        assertThat(firstClaim).extracting(DeliveryTask::deliveryId).containsExactly(nextDelivery);
+        queue.finish(firstClaim.get(0), 200, null);
+        List<DeliveryTask> replayClaim = queue.claimBatch();
+        assertThat(replayClaim).extracting(DeliveryTask::deliveryId).containsExactly(deadDelivery);
+    }
+
     private UUID insertDelivery(int maxAttempts) {
+        return insertDelivery(endpointId, maxAttempts);
+    }
+
+    private UUID insertDelivery(UUID targetEndpointId, int maxAttempts) {
         UUID eventId = UUID.randomUUID();
         UUID deliveryId = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO webhook_event (id, tenant_id, event_type, idempotency_key, payload)
                 VALUES (?, ?, 'order.created', ?, '{\"orderId\":\"q-1\"}'::jsonb)
                 """, eventId, tenantId, "queue-test-" + eventId);
+        long sequence = jdbc.queryForObject("""
+                UPDATE webhook_endpoint SET next_delivery_sequence = next_delivery_sequence + 1
+                WHERE id = ? RETURNING next_delivery_sequence
+                """, Long.class, targetEndpointId);
         jdbc.update("""
-                INSERT INTO webhook_delivery (id, event_id, endpoint_id, max_attempts)
-                VALUES (?, ?, ?, ?)
-                """, deliveryId, eventId, endpointId, maxAttempts);
+                INSERT INTO webhook_delivery (id, event_id, endpoint_id, sequence_number, max_attempts)
+                VALUES (?, ?, ?, ?, ?)
+                """, deliveryId, eventId, targetEndpointId, sequence, maxAttempts);
         return deliveryId;
     }
 }

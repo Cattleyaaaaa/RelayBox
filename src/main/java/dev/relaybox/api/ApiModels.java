@@ -25,13 +25,20 @@ public final class ApiModels {
 
     public record CreateEndpointRequest(
             @NotBlank @Size(max = 2000) String url,
-            @NotEmpty List<@NotBlank @Size(max = 160) String> eventTypes) {}
+            @NotEmpty List<@NotBlank @Size(max = 160) String> eventTypes,
+            @Min(1) @Max(1000) Integer circuitFailureThreshold,
+            @Min(1) @Max(3600) Integer circuitOpenDurationSeconds) {}
 
     public record EndpointResponse(UUID id, String url, List<String> eventTypes,
-                                   String signingSecret, boolean enabled, Instant createdAt, Instant updatedAt) {}
+                                   String signingSecret, boolean enabled, String circuitState,
+                                   int consecutiveFailures, Instant circuitOpenUntil,
+                                   int circuitFailureThreshold, int circuitOpenDurationSeconds,
+                                   Instant createdAt, Instant updatedAt) {}
 
     public record SetEndpointEnabledRequest(@NotNull Boolean enabled) {}
-    public record EndpointStatusResponse(UUID id, boolean enabled, Instant updatedAt) {}
+    public record EndpointStatusResponse(UUID id, boolean enabled, String circuitState,
+                                         int consecutiveFailures, Instant circuitOpenUntil,
+                                         Instant updatedAt) {}
 
     public record PublishEventRequest(
             @NotBlank @Size(max = 160) String type,
@@ -41,7 +48,7 @@ public final class ApiModels {
     public record PublishEventResponse(UUID eventId, int deliveryCount, boolean duplicate) {}
 
     public record DeliveryResponse(UUID id, UUID eventId, UUID endpointId, String status,
-                                   int attemptCount, Instant nextAttemptAt,
+                                   long sequenceNumber, int attemptCount, int maxAttempts, Instant nextAttemptAt,
                                    Integer lastStatusCode, String lastError,
                                    Instant createdAt, Instant updatedAt) {}
 

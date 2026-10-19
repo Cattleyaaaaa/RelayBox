@@ -10,6 +10,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -25,6 +26,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 
 @Component
+@ConditionalOnProperty(prefix = "relaybox.worker", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class DeliveryWorker {
     private final ObjectMapper mapper;
     private final WebhookService webhookService;

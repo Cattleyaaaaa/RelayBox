@@ -70,6 +70,35 @@ class RelayBoxIntegrationTest {
     }
 
     @Test
+    void chaosReceiverPersistsOneBusinessEffectForDuplicateDeliveryRequests() {
+        assertThat(call("POST", "/dev/receiver/chaos/arm", MASTER_KEY, "").status()).isEqualTo(200);
+        UUID deliveryId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        String body = "{\"type\":\"order.created\",\"data\":{\"orderId\":\"dedupe\"}}";
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/dev/receiver/chaos/deliver"))
+                .header("X-Webhook-Delivery", deliveryId.toString())
+                .header("X-Webhook-Id", eventId.toString())
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)).build();
+
+        try {
+            assertThat(http.send(request, HttpResponse.BodyHandlers.discarding()).statusCode()).isEqualTo(200);
+            assertThat(http.send(request, HttpResponse.BodyHandlers.discarding()).statusCode()).isEqualTo(200);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Chaos receiver request failed", exception);
+        }
+
+        JsonNode state = get("/dev/receiver/chaos/state", MASTER_KEY).body();
+        assertThat(state.path("receivedCount").asInt()).isEqualTo(2);
+        assertThat(state.path("appliedBusinessEffects").asInt()).isEqualTo(1);
+        assertThat(state.path("receipts").get(0).path("businessEffectApplied").asBoolean()).isTrue();
+        assertThat(state.path("receipts").get(1).path("businessEffectApplied").asBoolean()).isFalse();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM dev_receiver_effect WHERE delivery_id = ?",
+                Integer.class, deliveryId)).isEqualTo(1);
+        assertThat(get("/dev/receiver/chaos/report", "invalid-key").status()).isEqualTo(401);
+    }
+
+    @Test
     void retriesFailedRequestsUntilReceiverSucceeds() {
         Tenant tenant = createTenant("retry");
         createEndpoint(tenant.apiKey());

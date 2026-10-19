@@ -93,6 +93,21 @@ function Wait-Delivery {
     throw "Timed out waiting for delivery status '$ExpectedStatus'; last state: $lastStatus."
 }
 
+function Wait-EndpointCircuit {
+    param([string]$ApiKey, [string]$EndpointId, [string]$ExpectedState, [int]$TimeoutSeconds = 15)
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $result = Invoke-RelayApi -Method "GET" -Path "/api/v1/endpoints" -ApiKey $ApiKey
+        Assert-Status $result 200 "Reading endpoint circuit state"
+        $endpoint = @($result.Body | Where-Object { $_.id -eq $EndpointId }) | Select-Object -First 1
+        if ($null -ne $endpoint -and $endpoint.circuitState -eq $ExpectedState) { return $endpoint }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    $lastState = if ($null -ne $endpoint) { $endpoint.circuitState } else { "endpoint not found" }
+    throw "Timed out waiting for endpoint circuit '$ExpectedState'; last state: $lastState."
+}
+
 try {
     $health = Invoke-RestMethod -Uri ($BaseUrl.TrimEnd('/') + "/actuator/health")
     if ($health.status -ne "UP") { throw "RelayBox is not healthy." }
@@ -147,6 +162,31 @@ try {
     Assert-Status $replayResult 202 "Replaying dead-letter delivery"
     $replayedDelivery = Wait-Delivery -ApiKey $tenantKey -EventId $deadEvent.eventId -ExpectedStatus "SUCCEEDED"
     Write-Host "Replay demonstration: delivery succeeded on attempt $($replayedDelivery.attemptCount)" -ForegroundColor Green
+
+    $circuitEndpointResult = Invoke-RelayApi -Method "POST" -Path "/api/v1/endpoints" -ApiKey $tenantKey -Body @{
+        url                         = "http://app:8080/dev/receiver/deliver"
+        eventTypes                  = @("circuit.probe")
+        circuitFailureThreshold    = 1
+        circuitOpenDurationSeconds = 2
+    }
+    Assert-Status $circuitEndpointResult 201 "Creating circuit-breaker endpoint"
+    $circuitEndpointId = $circuitEndpointResult.Body.id
+    $receiverConfig = Invoke-RelayApi -Method "POST" -Path "/dev/receiver/config" -ApiKey $MasterKey -Body @{
+        failuresBeforeSuccess = 1
+        failureStatus         = 500
+    }
+    Assert-Status $receiverConfig 200 "Configuring circuit-breaker demonstration"
+    $circuitEventResult = Invoke-RelayApi -Method "POST" -Path "/api/v1/events" -ApiKey $tenantKey -Body @{
+        type           = "circuit.probe"
+        idempotencyKey = "circuit-$suffix"
+        payload        = @{ probeId = "probe-$suffix" }
+    }
+    Assert-Status $circuitEventResult 202 "Publishing circuit-breaker probe event"
+    $circuitEvent = $circuitEventResult.Body
+    $openedEndpoint = Wait-EndpointCircuit -ApiKey $tenantKey -EndpointId $circuitEndpointId -ExpectedState "OPEN"
+    $recoveredDelivery = Wait-Delivery -ApiKey $tenantKey -EventId $circuitEvent.eventId -ExpectedStatus "SUCCEEDED"
+    $recoveredEndpoint = Wait-EndpointCircuit -ApiKey $tenantKey -EndpointId $circuitEndpointId -ExpectedState "CLOSED"
+    Write-Host "Circuit-breaker demonstration: opened after $($openedEndpoint.consecutiveFailures) failure, recovered to $($recoveredEndpoint.circuitState) after $($recoveredDelivery.attemptCount) attempts" -ForegroundColor Green
 
     $limitedTenantResult = Invoke-RelayApi -Method "POST" -Path "/api/v1/tenants" -ApiKey $MasterKey -Body @{
         name                     = "relaybox-limit-$suffix"
