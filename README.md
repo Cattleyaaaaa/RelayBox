@@ -1,5 +1,7 @@
 # RelayBox
 
+[![RelayBox CI](https://github.com/Cattleyaaaaa/RelayBox/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Cattleyaaaaa/RelayBox/actions/workflows/ci.yml)
+
 RelayBox 是一个可靠的 Webhook 事件投递服务。业务系统提交事件后，平台会匹配订阅端点、持久化投递任务、异步发送带 HMAC 签名的请求，并在失败时自动重试。
 
 ## 技术栈
@@ -10,6 +12,15 @@ RelayBox 是一个可靠的 Webhook 事件投递服务。业务系统提交事�
 - 独立 API 与 Delivery Service 数据库
 - PostgreSQL `FOR UPDATE SKIP LOCKED` 队列领取
 - JDK `HttpClient`、HMAC-SHA256
+
+## 核心设计与验证
+
+- **避免跨服务双写丢失：** Event API 在一个 PostgreSQL 事务中写事件与 Outbox；RabbitMQ Publisher Confirm 后标记已发布，Delivery Service 用幂等 Inbox 接收至少一次消息。
+- **应对投递进程崩溃：** Delivery Service 在独立 PostgreSQL 中持久化任务，以 `SKIP LOCKED`、执行租约、端点顺序和指数退避恢复投递；失败任务可进入死信并人工重放。
+- **验证消息恢复链路：** GitHub Actions 自动运行 API 集成测试和 Compose 故障恢复流程。CI 会停掉 RabbitMQ，在 broker 中断时提交事件，再验证 broker 恢复后两条投递均成功；本地集成测试为 16 项。
+- **公开性能边界：** 本机 45 事件/秒固定负载重复六轮，共成功投递 8100 个事件。该负载下副本翻倍没有测出延迟收益，因此结果不作为最大吞吐或生产容量承诺。见[压测记录](benchmarks/2026-10-19-microservices.md)。
+
+查看[微服务架构说明](docs/microservice-architecture.md)、[三分钟面试演示](docs/面试演示.md)，或直接启动下方管理台演示。
 
 ## 本地启动
 
@@ -150,7 +161,7 @@ Compose 演示默认三次失败后标记为 `DEAD`，然后能在不丢失旧�
 
 ## 集成测试
 
-集成测试目前通过兼容配置运行旧的单体 worker 路径，覆盖事件幂等、自动重试、死信重放、租户隔离、API Key 轮换与过期、并发配额、Webhook 目标校验、`SKIP LOCKED` 并发领取、端点顺序、熔断和租约恢复。独立服务间的 Outbox/RabbitMQ/Inbox 交接已通过 Compose 压测与 RabbitMQ 中断恢复演示验证；这仍不是自动化的完整容器集成测试。首次运行会下载 Maven 依赖：
+API 集成测试通过兼容配置运行旧的单体 Worker 路径，覆盖事件幂等、自动重试、死信重放、租户隔离、API Key 轮换与过期、并发配额、Webhook 目标校验、`SKIP LOCKED` 并发领取、端点顺序、熔断和租约恢复。独立服务间的 Outbox/RabbitMQ/Inbox 交接由另一项 Compose CI 作业端到端验证，包含 RabbitMQ 停机、事件暂存、broker 恢复和投递成功检查。首次运行会下载 Maven 依赖：
 
 ```powershell
 docker compose --profile test run --rm integration-tests
@@ -178,7 +189,7 @@ docker compose --profile test run --rm integration-tests
 
 现场讲解顺序、常见追问和限定的简历表述见 [面试演示说明](docs/面试演示.md)。
 
-仓库包含 GitHub Actions 流水线：推送分支或创建 PR 时会启动独立 PostgreSQL 服务并运行相同的集成测试。把项目推送到 GitHub 后即可在 Actions 页面查看结果。
+GitHub Actions 在每次推送和 Pull Request 上运行两项独立检查：PostgreSQL 支持的 API 集成测试，以及完整 Compose 栈的 RabbitMQ 中断恢复验证。状态见页面顶部的 CI 徽章。
 
 ## API
 
@@ -216,11 +227,10 @@ Webhook 目标默认必须是 HTTP/HTTPS，且解析后不能指向回环、内�
 
 每个端点有单调递增的投递序号。RabbitMQ 单活消费者按 Outbox 次序摄取消息，Delivery Service 为目标端点分配序号；Worker 只领取该端点最早的未完成投递，因此同一端点上的事件按序发送。头部投递失败时会继续重试并阻塞后续序号；成功或进入死信后队列继续前进。人工重放会获得新序号并排到端点队尾。
 
-Delivery Service 队列由其 PostgreSQL 数据库持久化：多个副本的 worker 使用 `FOR UPDATE SKIP LOCKED` 领取互不重叠的任务；任务带两分钟租约。租约过期后，下次轮询会关闭遗留的 `IN_FLIGHT` 尝试并按剩余次数重新入队，达到上限则转为 `DEAD`。服务内队列集成测试覆盖同端点顺序与重试阻塞、跨端点并行领取、强制过期租约和尝试次数耗尽；RabbitMQ 交接目前还没有端到端测试证据。
+Delivery Service 队列由其 PostgreSQL 数据库持久化：多个副本的 worker 使用 `FOR UPDATE SKIP LOCKED` 领取互不重叠的任务；任务带两分钟租约。租约过期后，下次轮询会关闭遗留的 `IN_FLIGHT` 尝试并按剩余次数重新入队，达到上限则转为 `DEAD`。服务内队列集成测试覆盖同端点顺序与重试阻塞、跨端点并行领取、强制过期租约和尝试次数耗尽；Compose CI 还会验证 RabbitMQ 中断期间 Outbox 暂存、broker 恢复后 Inbox 接收及最终投递成功。
 
-## 后续可扩展
+## 当前边界与下一步
 
-- 项目级 API Key、配额与限流策略
-- 多队列分区、批量投递和运维管理界面
-- Prometheus 指标、结构化审计日志和压测报告
-- 签名密钥轮换、加密存储及网络出口策略
+- API 集成测试仍使用兼容的单体 Worker 配置；Delivery Service 目前由队列集成测试和 Compose 故障恢复作业覆盖，后续可补全独立服务的契约测试与更细粒度故障注入。
+- 当前基准只测了本机固定负载，没有确定饱和点，也没有证明多副本带来性能提升；下一轮应按阶梯负载测出拐点，并记录数据库、RabbitMQ 和容器资源数据。
+- 生产部署仍需补充凭据管理、出口网络策略、备份恢复、审计与告警，并在目标环境重新做容量验证。
