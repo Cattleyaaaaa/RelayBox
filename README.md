@@ -17,7 +17,7 @@ RelayBox 是一个可靠的 Webhook 事件投递服务。业务系统提交事�
 
 - **避免跨服务双写丢失：** Event API 在一个 PostgreSQL 事务中写事件与 Outbox；RabbitMQ Publisher Confirm 后标记已发布，Delivery Service 用幂等 Inbox 接收至少一次消息。
 - **应对投递进程崩溃：** Delivery Service 在独立 PostgreSQL 中持久化任务，以 `SKIP LOCKED`、执行租约、端点顺序和指数退避恢复投递；失败任务可进入死信并人工重放。
-- **验证消息可靠性：** 16 项 API 集成测试覆盖业务规则；Outbox NACK 测试验证失败确认不会误标已发布，Inbox 测试验证重复消息不会重复建任务；Compose CI 再停掉 RabbitMQ，验证中断期间事件保留且恢复后两条投递成功。
+- **验证消息可靠性：** 16 项 API 集成测试覆盖业务规则；消息测试覆盖 Outbox NACK、Inbox 重复消费，以及消费端数据库短暂故障后的有界退避重试和耗尽处理；Compose CI 再停掉 RabbitMQ，验证中断期间事件保留且恢复后两条投递成功。
 - **公开性能边界：** 本机 45 事件/秒固定负载重复六轮，共成功投递 8100 个事件。该负载下副本翻倍没有测出延迟收益，因此结果不作为最大吞吐或生产容量承诺。见[压测记录](benchmarks/2026-10-19-microservices.md)。
 
 查看[微服务架构说明](docs/microservice-architecture.md)、[三分钟面试演示](docs/面试演示.md)，或直接启动下方管理台演示。
@@ -161,7 +161,7 @@ Compose 演示默认三次失败后标记为 `DEAD`，然后能在不丢失旧�
 
 ## 集成测试
 
-API 集成测试通过兼容配置运行旧的单体 Worker 路径，覆盖事件幂等、自动重试、死信重放、租户隔离、API Key 轮换与过期、并发配额、Webhook 目标校验、`SKIP LOCKED` 并发领取、端点顺序、熔断和租约恢复。消息单元测试分别验证 Publisher NACK 和重复 Inbox 消息。独立服务间的 Outbox/RabbitMQ/Inbox 交接由 Compose CI 端到端验证，包含 RabbitMQ 停机、事件暂存、broker 恢复和投递成功检查。GitHub Actions 会执行以上测试；首次运行会下载 Maven 依赖：
+API 集成测试通过兼容配置运行旧的单体 Worker 路径，覆盖事件幂等、自动重试、死信重放、租户隔离、API Key 轮换与过期、并发配额、Webhook 目标校验、`SKIP LOCKED` 并发领取、端点顺序、熔断和租约恢复。Delivery Service 消息测试覆盖 Publisher NACK、重复 Inbox 消息、数据库短暂故障后的重试成功，以及重试耗尽后将异常交给 Listener 容器（其配置会拒绝重入队并由队列死信策略处理）。独立服务间的 Outbox/RabbitMQ/Inbox 交接由 Compose CI 端到端验证，包含 RabbitMQ 停机、事件暂存、broker 恢复和投递成功检查。GitHub Actions 会执行以上测试；首次运行会下载 Maven 依赖：
 
 ```powershell
 docker compose --profile test run --rm integration-tests
