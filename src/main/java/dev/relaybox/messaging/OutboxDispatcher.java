@@ -118,5 +118,5 @@ public class OutboxDispatcher {
         return value.length() <= 1000 ? value : value.substring(0, 1000);
     }
 
-    private record OutboxRow(UUID eventId, String message) {}
+    record OutboxRow(UUID eventId, String message) {}
 }

@@ -72,3 +72,5 @@ jobs:
           cache: maven
       - name: Run integration tests
         run: mvn -B test
+      - name: Run Delivery Service messaging tests
+        run: mvn -B -f delivery-service/pom.xml test
