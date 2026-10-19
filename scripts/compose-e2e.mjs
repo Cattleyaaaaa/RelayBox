@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const projectDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const baseUrl = (process.env.RELAYBOX_API_URL ?? "http://localhost:8080").replace(/\/$/, "");
+const baseUrl = (process.env.RELAYBOX_API_URL ?? "http://127.0.0.1:8080").replace(/\/$/, "");
 const masterKey = process.env.RELAYBOX_MASTER_KEY ?? "local-master-key";
 const runId = randomUUID().replaceAll("-", "");
 const eventType = `compose.e2e.${runId}`;

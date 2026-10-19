@@ -52,7 +52,7 @@ jobs:
       DB_URL: jdbc:postgresql://localhost:5432/relaybox_test
       DB_USER: relaybox_test
       DB_PASSWORD: relaybox_test
-      RELAYBOX_MASTER_KEY: ci-test-master-key
+      RELAYBOX_MASTER_KEY: test-master-key
       TEST_RECEIVER_ENABLED: "true"
       ALLOW_PRIVATE_WEBHOOK_TARGETS: "true"
       DELIVERY_MAX_ATTEMPTS: 3

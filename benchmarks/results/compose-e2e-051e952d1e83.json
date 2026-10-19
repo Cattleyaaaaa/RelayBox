@@ -1,0 +1,28 @@
+{
+  "scenario": "compose-outbox-rabbitmq-inbox-delivery-recovery",
+  "runId": "051e952d1e834c3a9a28d4a6127935e2",
+  "complete": true,
+  "eventsAcceptedDuringBrokerOutage": 2,
+  "outboxAttemptsDuringOutage": [
+    {
+      "attempts": 7,
+      "published": false
+    },
+    {
+      "attempts": 0,
+      "published": false
+    }
+  ],
+  "deliveriesAfterRecovery": [
+    {
+      "id": "ddf6c67d-1dd8-4069-8de0-89364c6f5aa8",
+      "status": "SUCCEEDED",
+      "attemptCount": 1
+    },
+    {
+      "id": "b4295514-9255-4b6f-8509-c4548a88e105",
+      "status": "SUCCEEDED",
+      "attemptCount": 1
+    }
+  ]
+}
