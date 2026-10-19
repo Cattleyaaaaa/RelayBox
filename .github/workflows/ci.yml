@@ -16,6 +16,8 @@ jobs:
     name: Compose service handoff and recovery
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      RELAYBOX_API_BIND_ADDRESS: 0.0.0.0
     steps:
       - name: Check out source
         uses: actions/checkout@v7

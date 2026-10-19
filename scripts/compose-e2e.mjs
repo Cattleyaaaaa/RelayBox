@@ -21,15 +21,22 @@ function docker(...args) {
 }
 
 async function request(method, url, key, body) {
-  const response = await fetch(url, {
-    method,
-    headers: {
-      "X-API-Key": key,
-      ...(body ? { "Content-Type": "application/json" } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-    signal: AbortSignal.timeout(5000),
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers: {
+        "X-API-Key": key,
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch (error) {
+    const cause = error.cause;
+    const detail = cause ? ` (${cause.code ?? cause.name}: ${cause.message})` : "";
+    throw new Error(`${method} ${url} failed: ${error.message}${detail}`, { cause: error });
+  }
   const raw = await response.text();
   let parsed;
   try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = raw; }
