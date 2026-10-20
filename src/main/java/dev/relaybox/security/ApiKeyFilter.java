@@ -57,6 +57,14 @@ public class ApiKeyFilter extends OncePerRequestFilter {
             }
             return;
         }
+        if (request.getRequestURI().startsWith("/api/v1/admin/")) {
+            if (MessageDigest.isEqual(masterKey, provided.getBytes(StandardCharsets.UTF_8))) {
+                chain.doFilter(request, response);
+            } else {
+                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Master API key required");
+            }
+            return;
+        }
         String apiKeyHash = sha256(provided);
         ListResult tenant = findTenant(apiKeyHash);
         if (tenant == null) {

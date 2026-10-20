@@ -53,6 +53,17 @@ public class DeliveryServiceClient {
                 .retrieve().body(new ParameterizedTypeReference<>() {});
     }
 
+    public ApiModels.PageResponse<ApiModels.DeadLetterResponse> listDeadLetters(int limit, int offset) {
+        return client.get().uri("/internal/dead-letters?limit={limit}&offset={offset}", limit, offset)
+                .header("X-RelayBox-Internal-Token", internalToken)
+                .retrieve().body(new ParameterizedTypeReference<>() {});
+    }
+
+    public void replayDeadLetter(UUID id) {
+        client.post().uri("/internal/dead-letters/{id}/replay", id)
+                .header("X-RelayBox-Internal-Token", internalToken).retrieve().toBodilessEntity();
+    }
+
     public QueueStats queueStats() {
         return client.get().uri("/internal/queue-stats")
                 .header("X-RelayBox-Internal-Token", internalToken)

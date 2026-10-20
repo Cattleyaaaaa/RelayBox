@@ -22,6 +22,8 @@ server:
   port: ${PORT:8080}
 relaybox:
   master-key: ${RELAYBOX_MASTER_KEY:local-master-key}
+  api:
+    max-payload-bytes: ${MAX_PAYLOAD_BYTES:262144}
   rate-limit:
     default-events-per-minute: ${DEFAULT_EVENTS_PER_MINUTE:120}
     redis-burst:
@@ -35,6 +37,9 @@ relaybox:
     enabled: ${DELIVERY_SERVICE_ENABLED:false}
     poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:100}
     batch-size: ${OUTBOX_BATCH_SIZE:40}
+    max-attempts: ${OUTBOX_MAX_ATTEMPTS:50}
+    retry-base-delay-ms: ${OUTBOX_RETRY_BASE_DELAY_MS:200}
+    retry-max-delay-ms: ${OUTBOX_RETRY_MAX_DELAY_MS:60000}
   webhook:
     allow-private-targets: ${ALLOW_PRIVATE_WEBHOOK_TARGETS:false}
   circuit:

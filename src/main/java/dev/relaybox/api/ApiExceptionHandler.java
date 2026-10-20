@@ -13,10 +13,20 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientResponseException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
+    private final ObjectMapper mapper;
+
+    public ApiExceptionHandler(ObjectMapper mapper) {
+        this.mapper = mapper;
+    }
 
     @ExceptionHandler(IdempotencyConflictException.class)
     ProblemDetail idempotencyConflict(IdempotencyConflictException exception) {
@@ -49,6 +59,17 @@ public class ApiExceptionHandler {
                 "Invalid request path, parameter, or required attribute");
     }
 
+    @ExceptionHandler(RestClientResponseException.class)
+    ProblemDetail downstreamRejected(RestClientResponseException exception, HttpServletRequest request) {
+        int code = exception.getStatusCode().value();
+        HttpStatus resolved = HttpStatus.resolve(code);
+        HttpStatus status = resolved != null && resolved.is4xxClientError() ? resolved : HttpStatus.BAD_GATEWAY;
+        String detail = downstreamDetail(exception);
+        log.warn("Delivery service rejected request: method={} path={} status={} detail={}",
+                request.getMethod(), request.getRequestURI(), code, detail);
+        return ProblemDetail.forStatusAndDetail(status, detail);
+    }
+
     @ExceptionHandler(ResourceAccessException.class)
     ProblemDetail deliveryUnavailable(ResourceAccessException exception, HttpServletRequest request,
                                       HttpServletResponse response) {
@@ -57,5 +78,19 @@ public class ApiExceptionHandler {
         response.setHeader("Retry-After", "2");
         return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE,
                 "Delivery service is temporarily unavailable; retry later");
+    }
+
+    private String downstreamDetail(RestClientResponseException exception) {
+        String body = exception.getResponseBodyAsString();
+        if (body != null && !body.isBlank()) {
+            try {
+                JsonNode node = mapper.readTree(body);
+                if (node.hasNonNull("detail")) return node.get("detail").asText();
+                if (node.hasNonNull("message")) return node.get("message").asText();
+            } catch (JacksonException ignored) {
+                // Fall through to the status-based message.
+            }
+        }
+        return "delivery service returned HTTP " + exception.getStatusCode().value();
     }
 }

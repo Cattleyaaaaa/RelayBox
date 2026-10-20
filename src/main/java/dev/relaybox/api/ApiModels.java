@@ -36,6 +36,12 @@ public final class ApiModels {
                                    Instant createdAt, Instant updatedAt) {}
 
     public record SetEndpointEnabledRequest(@NotNull Boolean enabled) {}
+    public record UpdateEndpointRequest(
+            @Size(max = 2000) String url,
+            @NotEmpty List<@NotBlank @Size(max = 160) String> eventTypes,
+            @Min(1) @Max(1000) Integer circuitFailureThreshold,
+            @Min(1) @Max(3600) Integer circuitOpenDurationSeconds) {}
+    public record RotateEndpointSecretResponse(UUID endpointId, String signingSecret) {}
     public record EndpointStatusResponse(UUID id, boolean enabled, String circuitState,
                                          int consecutiveFailures, Instant circuitOpenUntil,
                                          Instant updatedAt) {}
@@ -57,4 +63,12 @@ public final class ApiModels {
                                           Instant startedAt, Instant completedAt) {}
 
     public record PageResponse<T>(List<T> items, int limit, int offset, boolean hasMore) {}
+
+    public record OutboxResponse(UUID eventId, UUID tenantId, int attempts, String failureKind,
+                                 String lastError, Instant nextAttemptAt, Instant abandonedAt,
+                                 Instant publishedAt, Instant createdAt) {}
+
+    public record DeadLetterResponse(UUID id, String sourceQueue, String body, String headers,
+                                     Instant deadLetteredAt, Instant replayedAt, int replayCount,
+                                     String lastReplayError) {}
 }
