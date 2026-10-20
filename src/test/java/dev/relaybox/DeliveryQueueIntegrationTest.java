@@ -199,6 +199,30 @@ class DeliveryQueueIntegrationTest {
         assertThat(replayClaim).extracting(DeliveryTask::deliveryId).containsExactly(deadDelivery);
     }
 
+    @Test
+    void localCapacityDeferralReturnsRetryBudgetAndLeavesCircuitClosed() {
+        UUID deliveryId = insertDelivery(2);
+        DeliveryTask task = queue.claimBatch().get(0);
+
+        queue.defer(task, "delivery worker is at capacity; task will be retried");
+
+        assertThat(jdbc.queryForObject("SELECT status FROM webhook_delivery WHERE id = ?", String.class, deliveryId))
+                .isEqualTo("PENDING");
+        assertThat(jdbc.queryForObject("SELECT attempt_count FROM webhook_delivery WHERE id = ?", Integer.class, deliveryId))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT max_attempts FROM webhook_delivery WHERE id = ?", Integer.class, deliveryId))
+                .isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT circuit_state FROM webhook_endpoint WHERE id = ?", String.class, endpointId))
+                .isEqualTo("CLOSED");
+        assertThat(jdbc.queryForObject("SELECT consecutive_failures FROM webhook_endpoint WHERE id = ?", Integer.class, endpointId))
+                .isZero();
+
+        jdbc.update("UPDATE webhook_delivery SET next_attempt_at = now() WHERE id = ?", deliveryId);
+        DeliveryTask retry = queue.claimBatch().get(0);
+        assertThat(retry.deliveryId()).isEqualTo(deliveryId);
+        assertThat(retry.attemptCount()).isEqualTo(2);
+    }
+
     private UUID insertDelivery(int maxAttempts) {
         return insertDelivery(endpointId, maxAttempts);
     }

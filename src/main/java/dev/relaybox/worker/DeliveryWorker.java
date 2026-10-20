@@ -53,7 +53,8 @@ public class DeliveryWorker {
             try {
                 deliveryExecutor.execute(() -> deliver(task));
             } catch (RejectedExecutionException exception) {
-                queue.finish(task, null, "delivery worker is at capacity; task will be retried");
+                // Local capacity, not a receiver failure: keep the retry budget and circuit intact.
+                queue.defer(task, "delivery worker is at capacity; task will be retried");
             }
         }
     }
@@ -78,7 +79,8 @@ public class DeliveryWorker {
             if (statusCode < 200 || statusCode >= 300) error = "receiver returned HTTP " + statusCode;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            error = "delivery interrupted";
+            queue.defer(task, "delivery interrupted before completion");
+            return;
         } catch (Exception exception) {
             error = exception.getClass().getSimpleName() + ": " + safeMessage(exception.getMessage());
         }

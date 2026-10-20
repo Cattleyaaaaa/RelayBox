@@ -32,7 +32,10 @@ public class DeliveryEventIngestService {
                     INSERT INTO webhook_endpoint (id, tenant_id, url, signing_secret, circuit_failure_threshold,
                         circuit_open_duration_seconds)
                     VALUES (?, ?, ?, ?, ?, ?)
-                    ON CONFLICT (id) DO NOTHING
+                    ON CONFLICT (id) DO UPDATE SET
+                        circuit_failure_threshold = EXCLUDED.circuit_failure_threshold,
+                        circuit_open_duration_seconds = EXCLUDED.circuit_open_duration_seconds,
+                        updated_at = now()
                     """, target.endpointId(), message.tenantId(), target.url(), target.signingSecret(),
                     target.circuitFailureThreshold(), target.circuitOpenDurationSeconds());
             long sequence = jdbc.queryForObject("""

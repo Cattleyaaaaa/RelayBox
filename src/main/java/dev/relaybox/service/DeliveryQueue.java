@@ -229,6 +229,33 @@ public class DeliveryQueue {
                 .record(durations.get(0), java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * Requeues an attempt that never reached a receiver verdict (worker pool saturation,
+     * shutdown interruption). The retry budget consumed by the claim is returned and the
+     * endpoint circuit is left untouched, because the receiver was not proven unhealthy.
+     */
+    @Transactional
+    public boolean defer(DeliveryTask task, String reason) {
+        String message = truncate(reason, 2000);
+        List<Long> durations = jdbc.query("""
+                UPDATE webhook_delivery_attempt SET status = 'FAILED', error = ?,
+                    duration_ms = floor(extract(epoch FROM (now() - started_at)) * 1000)::bigint,
+                    completed_at = now()
+                WHERE id = ? AND status = 'IN_FLIGHT'
+                RETURNING duration_ms
+                """, (rs, row) -> rs.getLong("duration_ms"), message, task.attemptId());
+        if (durations.isEmpty()) return false;
+        int updated = jdbc.update("""
+                UPDATE webhook_delivery SET status = 'PENDING', max_attempts = max_attempts + 1,
+                    next_attempt_at = now() + interval '1 second', last_error = ?, lease_until = NULL,
+                    updated_at = now()
+                WHERE id = ? AND status = 'IN_FLIGHT' AND attempt_count = ?
+                """, message, task.deliveryId(), task.attemptCount());
+        if (updated != 1) throw new IllegalStateException("delivery state changed while deferring attempt");
+        meters.counter("relaybox.delivery.attempts", "outcome", "deferred").increment();
+        return true;
+    }
+
     private String truncate(String value, int limit) {
         return value == null ? null : value.substring(0, Math.min(value.length(), limit));
     }

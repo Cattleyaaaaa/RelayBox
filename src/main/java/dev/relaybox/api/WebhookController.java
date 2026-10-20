@@ -3,10 +3,12 @@ package dev.relaybox.api;
 import dev.relaybox.service.WebhookService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
@@ -41,6 +43,25 @@ public class WebhookController {
             @RequestAttribute("tenantId") UUID tenantId, @PathVariable UUID endpointId,
             @Valid @RequestBody ApiModels.SetEndpointEnabledRequest request) {
         return service.setEndpointEnabled(tenantId, endpointId, request.enabled());
+    }
+
+    @PutMapping("/endpoints/{endpointId}")
+    public ApiModels.EndpointResponse updateEndpoint(
+            @RequestAttribute("tenantId") UUID tenantId, @PathVariable UUID endpointId,
+            @Valid @RequestBody ApiModels.UpdateEndpointRequest request) {
+        return service.updateEndpoint(tenantId, endpointId, request);
+    }
+
+    @DeleteMapping("/endpoints/{endpointId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteEndpoint(@RequestAttribute("tenantId") UUID tenantId, @PathVariable UUID endpointId) {
+        service.deleteEndpoint(tenantId, endpointId);
+    }
+
+    @PostMapping("/endpoints/{endpointId}/secret/rotate")
+    public ApiModels.RotateEndpointSecretResponse rotateSigningSecret(
+            @RequestAttribute("tenantId") UUID tenantId, @PathVariable UUID endpointId) {
+        return service.rotateSigningSecret(tenantId, endpointId);
     }
 
     @PostMapping("/events")

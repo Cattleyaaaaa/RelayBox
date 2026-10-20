@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -25,6 +26,7 @@ public class WebhookService {
     private final ObjectMapper mapper;
     private final WebhookTargetPolicy targetPolicy;
     private final int maxAttempts;
+    private final int maxPayloadBytes;
     private final int defaultCircuitFailureThreshold;
     private final int defaultCircuitOpenDurationSeconds;
     private final DeliveryServiceClient deliveryService;
@@ -34,6 +36,7 @@ public class WebhookService {
     public WebhookService(JdbcTemplate jdbc, ObjectMapper mapper, WebhookTargetPolicy targetPolicy,
                           DeliveryServiceClient deliveryService,
                           @Value("${relaybox.worker.max-attempts:8}") int maxAttempts,
+                          @Value("${relaybox.api.max-payload-bytes:262144}") int maxPayloadBytes,
                           @Value("${relaybox.circuit.default-failure-threshold:5}") int defaultCircuitFailureThreshold,
                           @Value("${relaybox.circuit.default-open-duration-seconds:30}") int defaultCircuitOpenDurationSeconds,
                           @Value("${relaybox.delivery-service.enabled:false}") boolean deliveryServiceEnabled) {
@@ -43,6 +46,7 @@ public class WebhookService {
         this.deliveryService = deliveryService;
         this.deliveryServiceEnabled = deliveryServiceEnabled;
         this.maxAttempts = maxAttempts;
+        this.maxPayloadBytes = Math.max(1024, Math.min(10_000_000, maxPayloadBytes));
         this.defaultCircuitFailureThreshold = Math.max(1, Math.min(1000, defaultCircuitFailureThreshold));
         this.defaultCircuitOpenDurationSeconds = Math.max(1, Math.min(3600, defaultCircuitOpenDurationSeconds));
     }
@@ -75,7 +79,7 @@ public class WebhookService {
                 SELECT id, url, event_types::text, enabled, circuit_state, consecutive_failures,
                        circuit_open_until, circuit_failure_threshold, circuit_open_duration_seconds,
                        created_at, updated_at
-                FROM webhook_endpoint WHERE tenant_id = ? ORDER BY created_at DESC, id DESC
+                FROM webhook_endpoint WHERE tenant_id = ? AND deleted_at IS NULL ORDER BY created_at DESC, id DESC
                 """,
                 (rs, row) -> new ApiModels.EndpointResponse(rs.getObject("id", UUID.class), rs.getString("url"),
                         readStringList(rs.getString("event_types")), null, rs.getBoolean("enabled"),
@@ -99,7 +103,7 @@ public class WebhookService {
     public ApiModels.EndpointStatusResponse setEndpointEnabled(UUID tenantId, UUID endpointId, boolean enabled) {
         List<ApiModels.EndpointStatusResponse> updated = jdbc.query("""
                 UPDATE webhook_endpoint SET enabled = ?, updated_at = now()
-                WHERE tenant_id = ? AND id = ?
+                WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL
                 RETURNING id, enabled, circuit_state, consecutive_failures, circuit_open_until, updated_at
                 """, (rs, row) -> new ApiModels.EndpointStatusResponse(rs.getObject("id", UUID.class),
                 rs.getBoolean("enabled"), rs.getString("circuit_state"), rs.getInt("consecutive_failures"),
@@ -115,12 +119,61 @@ public class WebhookService {
     }
 
     @Transactional
+    public ApiModels.EndpointResponse updateEndpoint(UUID tenantId, UUID endpointId,
+                                                     ApiModels.UpdateEndpointRequest request) {
+        if (request.url() != null) targetPolicy.validate(request.url());
+        List<String> eventTypes = request.eventTypes() == null
+                ? null : request.eventTypes().stream().distinct().toList();
+        int updated = jdbc.update("""
+                UPDATE webhook_endpoint SET
+                    url = COALESCE(CAST(? AS text), url),
+                    event_types = COALESCE(CAST(? AS jsonb), event_types),
+                    circuit_failure_threshold = COALESCE(CAST(? AS integer), circuit_failure_threshold),
+                    circuit_open_duration_seconds = COALESCE(CAST(? AS integer), circuit_open_duration_seconds),
+                    updated_at = now()
+                WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL
+                """, request.url(), eventTypes == null ? null : writeJson(eventTypes),
+                request.circuitFailureThreshold(), request.circuitOpenDurationSeconds(),
+                tenantId, endpointId);
+        if (updated == 0) throw new IllegalArgumentException("endpoint does not exist for this tenant");
+        return listEndpoints(tenantId).stream().filter(endpoint -> endpoint.id().equals(endpointId))
+                .findFirst().orElseThrow(() -> new IllegalArgumentException("endpoint does not exist for this tenant"));
+    }
+
+    /** Soft delete: accepted deliveries keep their endpoint snapshot and finish normally. */
+    @Transactional
+    public void deleteEndpoint(UUID tenantId, UUID endpointId) {
+        int updated = jdbc.update("""
+                UPDATE webhook_endpoint SET deleted_at = now(), enabled = FALSE, updated_at = now()
+                WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL
+                """, tenantId, endpointId);
+        if (updated == 0) throw new IllegalArgumentException("endpoint does not exist for this tenant");
+    }
+
+    /** Returns the new signing secret exactly once; already accepted events keep their snapshot. */
+    @Transactional
+    public ApiModels.RotateEndpointSecretResponse rotateSigningSecret(UUID tenantId, UUID endpointId) {
+        byte[] secretBytes = new byte[32];
+        random.nextBytes(secretBytes);
+        String secret = Base64.getUrlEncoder().withoutPadding().encodeToString(secretBytes);
+        int updated = jdbc.update("""
+                UPDATE webhook_endpoint SET signing_secret = ?, updated_at = now()
+                WHERE tenant_id = ? AND id = ? AND deleted_at IS NULL
+                """, secret, tenantId, endpointId);
+        if (updated == 0) throw new IllegalArgumentException("endpoint does not exist for this tenant");
+        return new ApiModels.RotateEndpointSecretResponse(endpointId, secret);
+    }
+
+    @Transactional
     public ApiModels.PublishEventResponse publish(UUID tenantId, ApiModels.PublishEventRequest request) {
         if (!request.payload().isObject()) throw new IllegalArgumentException("payload must be a JSON object");
         String key = request.idempotencyKey() == null || request.idempotencyKey().isBlank()
                 ? UUID.randomUUID().toString() : request.idempotencyKey();
         UUID eventId = UUID.randomUUID();
         String payload = writeJson(request.payload());
+        if (payload.getBytes(StandardCharsets.UTF_8).length > maxPayloadBytes) {
+            throw new IllegalArgumentException("payload must not exceed " + maxPayloadBytes + " bytes");
+        }
         List<UUID> inserted = jdbc.query("""
                 INSERT INTO webhook_event (id, tenant_id, event_type, idempotency_key, payload)
                 VALUES (?, ?, ?, ?, ?::jsonb)
@@ -152,8 +205,8 @@ public class WebhookService {
             List<DeliveryEventMessage.Target> targets = jdbc.query("""
                     SELECT id, url, signing_secret, circuit_failure_threshold, circuit_open_duration_seconds
                     FROM webhook_endpoint
-                    WHERE tenant_id = ? AND enabled = TRUE AND event_types ?? ?
-                    ORDER BY id
+                    WHERE tenant_id = ? AND enabled = TRUE AND deleted_at IS NULL AND event_types ?? ?
+                    ORDER BY id FOR UPDATE
                     """, (rs, row) -> new DeliveryEventMessage.Target(rs.getObject("id", UUID.class),
                     rs.getString("url"), rs.getString("signing_secret"), maxAttempts,
                     rs.getInt("circuit_failure_threshold"), rs.getInt("circuit_open_duration_seconds")), tenantId, request.type());
@@ -166,7 +219,7 @@ public class WebhookService {
 
         List<UUID> deliveries = jdbc.query("""
                 SELECT id FROM webhook_endpoint
-                WHERE tenant_id = ? AND enabled = TRUE AND event_types ?? ?
+                WHERE tenant_id = ? AND enabled = TRUE AND deleted_at IS NULL AND event_types ?? ?
                 ORDER BY id FOR UPDATE
                 """, (rs, row) -> rs.getObject(1, UUID.class), tenantId, request.type());
         for (UUID endpointId : deliveries) {

@@ -288,6 +288,49 @@ class RelayBoxIntegrationTest {
         assertThat(get(path + "?limit=101&offset=0", tenant.apiKey()).status()).isEqualTo(400);
     }
 
+    @Test
+    void endpointCanBeUpdatedDeletedAndHaveItsSigningSecretRotated() {
+        Tenant tenant = createTenant("endpoint-update");
+        JsonNode created = call("POST", "/api/v1/endpoints", tenant.apiKey(),
+                "{\"url\":\"http://localhost:" + port + "/dev/receiver/deliver\",\"eventTypes\":[\"order.created\"]}").body();
+        String endpointId = created.path("id").asText();
+        String originalSecret = created.path("signingSecret").asText();
+
+        Response<JsonNode> updated = call("PUT", "/api/v1/endpoints/" + endpointId, tenant.apiKey(),
+                "{\"eventTypes\":[\"order.paid\"],\"circuitFailureThreshold\":2}");
+        assertThat(updated.status()).isEqualTo(200);
+        assertThat(updated.body().path("eventTypes").get(0).asText()).isEqualTo("order.paid");
+        assertThat(updated.body().path("circuitFailureThreshold").asInt()).isEqualTo(2);
+        assertThat(publish(tenant.apiKey(), "old-type-" + UUID.randomUUID()).path("deliveryCount").asInt()).isZero();
+
+        Response<JsonNode> rotated = call("POST", "/api/v1/endpoints/" + endpointId + "/secret/rotate",
+                tenant.apiKey(), "");
+        assertThat(rotated.status()).isEqualTo(200);
+        assertThat(rotated.body().path("signingSecret").asText())
+                .isNotBlank().isNotEqualTo(originalSecret);
+
+        assertThat(call("DELETE", "/api/v1/endpoints/" + endpointId, tenant.apiKey(), "").status()).isEqualTo(204);
+        assertThat(get("/api/v1/endpoints", tenant.apiKey()).body()).isEmpty();
+        assertThat(call("POST", "/api/v1/endpoints", tenant.apiKey(),
+                "{\"url\":\"http://localhost:" + port + "/dev/receiver/deliver\",\"eventTypes\":[\"order.created\"]}")
+                .status()).isEqualTo(201);
+    }
+
+    @Test
+    void oversizedPayloadIsRejectedBeforePersistingAnEvent() {
+        Tenant tenant = createTenant("payload-limit");
+        String body = "{\"type\":\"order.created\",\"idempotencyKey\":\"" + UUID.randomUUID()
+                + "\",\"payload\":{\"blob\":\"" + "x".repeat(300_000) + "\"}}";
+        assertThat(call("POST", "/api/v1/events", tenant.apiKey(), body).status()).isEqualTo(400);
+    }
+
+    @Test
+    void adminEndpointsRequireTheMasterKey() {
+        Tenant tenant = createTenant("admin-scope");
+        assertThat(get("/api/v1/admin/outbox", tenant.apiKey()).status()).isEqualTo(401);
+        assertThat(get("/api/v1/admin/outbox", MASTER_KEY).status()).isEqualTo(200);
+    }
+
     private Tenant createTenant(String prefix) {
         return createTenant(prefix, null);
     }
