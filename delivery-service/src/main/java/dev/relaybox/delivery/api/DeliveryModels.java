@@ -14,4 +14,7 @@ public final class DeliveryModels {
     public record PageResponse<T>(List<T> items, int limit, int offset, boolean hasMore) {}
     public record EndpointStatusResponse(UUID id, boolean enabled, String circuitState, int consecutiveFailures,
                                          Instant circuitOpenUntil, Instant updatedAt) {}
+    public record DeadLetterResponse(UUID id, String sourceQueue, String body, String headers,
+                                     Instant deadLetteredAt, Instant replayedAt, int replayCount,
+                                     String lastReplayError) {}
 }

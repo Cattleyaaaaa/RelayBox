@@ -17,6 +17,7 @@ public class DeliveryMetrics {
     private final AtomicLong inFlight = new AtomicLong();
     private final AtomicLong dead = new AtomicLong();
     private final AtomicLong oldestPendingAgeSeconds = new AtomicLong();
+    private final AtomicLong deadLetters = new AtomicLong();
 
     public DeliveryMetrics(JdbcTemplate jdbc, MeterRegistry registry) {
         this.jdbc = jdbc;
@@ -24,6 +25,7 @@ public class DeliveryMetrics {
         registry.gauge("relaybox.delivery.queue.depth", Tags.of("status", "in_flight"), inFlight);
         registry.gauge("relaybox.delivery.queue.depth", Tags.of("status", "dead"), dead);
         registry.gauge("relaybox.delivery.queue.oldest.pending.age", oldestPendingAgeSeconds);
+        registry.gauge("relaybox.delivery.deadletter.depth", deadLetters);
     }
 
     @Scheduled(fixedDelayString = "${relaybox.metrics.refresh-interval-ms:10000}", initialDelay = 1000)
@@ -53,5 +55,8 @@ public class DeliveryMetrics {
                 ), 0)
                 """, Long.class);
         oldestPendingAgeSeconds.set(oldestAge == null ? 0 : oldestAge);
+        Long deadLetterCount = jdbc.queryForObject(
+                "SELECT count(*) FROM dead_letter_message WHERE replayed_at IS NULL", Long.class);
+        deadLetters.set(deadLetterCount == null ? 0 : deadLetterCount);
     }
 }
