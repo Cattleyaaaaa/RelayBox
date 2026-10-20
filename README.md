@@ -17,7 +17,7 @@ RelayBox 是一个可靠的 Webhook 事件投递服务。业务系统提交事�
 
 - **避免跨服务双写丢失：** Event API 在一个 PostgreSQL 事务中写事件与 Outbox；RabbitMQ Publisher Confirm 后标记已发布，Delivery Service 用幂等 Inbox 接收至少一次消息。
 - **应对投递进程崩溃：** Delivery Service 在独立 PostgreSQL 中持久化任务，以 `SKIP LOCKED`、执行租约、端点顺序和指数退避恢复投递；失败任务可进入死信并人工重放。
-- **验证消息可靠性：** 16 项 API 集成测试覆盖业务规则；消息测试覆盖 Outbox NACK、Inbox 重复消费，以及消费端数据库短暂故障后的有界退避重试和耗尽处理；Compose CI 再停掉 RabbitMQ，验证中断期间事件保留且恢复后两条投递成功。
+- **验证消息可靠性：** 22 项 API 模块测试覆盖业务规则；6 项 Delivery Service 消息与死信测试覆盖 Outbox NACK、Inbox 重复消费、消费端数据库短暂故障后的有界退避重试、耗尽处理以及死信持久化与重放；Compose CI 再停掉 RabbitMQ，验证中断期间事件保留且恢复后两条投递成功。
 - **公开性能边界：** 本机 45 事件/秒固定负载重复六轮，共成功投递 8100 个事件。该负载下副本翻倍没有测出延迟收益，因此结果不作为最大吞吐或生产容量承诺。见[压测记录](benchmarks/2026-10-19-microservices.md)。
 
 查看[微服务架构说明](docs/microservice-architecture.md)、[三分钟面试演示](docs/面试演示.md)，或直接启动下方管理台演示。
@@ -161,7 +161,7 @@ Compose 演示默认三次失败后标记为 `DEAD`，然后能在不丢失旧�
 
 ## 集成测试
 
-API 集成测试通过兼容配置运行旧的单体 Worker 路径，覆盖事件幂等、自动重试、死信重放、租户隔离、API Key 轮换与过期、并发配额、Webhook 目标校验、`SKIP LOCKED` 并发领取、端点顺序、熔断和租约恢复。Delivery Service 消息测试覆盖 Publisher NACK、重复 Inbox 消息、数据库短暂故障后的重试成功，以及重试耗尽后将异常交给 Listener 容器（其配置会拒绝重入队并由队列死信策略处理）。独立服务间的 Outbox/RabbitMQ/Inbox 交接由 Compose CI 端到端验证，包含 RabbitMQ 停机、事件暂存、broker 恢复和投递成功检查。GitHub Actions 会执行以上测试；首次运行会下载 Maven 依赖：
+API 集成测试通过兼容配置运行旧的单体 Worker 路径，覆盖事件幂等、自动重试、死信重放、租户隔离、API Key 轮换与过期、并发配额、Webhook 目标校验、`SKIP LOCKED` 并发领取、端点顺序、熔断、租约恢复、本地容量失败隔离、端点更新/删除/密钥轮换、payload 上限和 admin 鉴权。Delivery Service 消息测试覆盖 Publisher NACK 与隔离、重复 Inbox 消息、数据库短暂故障后的重试成功、重试耗尽后将异常交给 Listener 容器（其配置会拒绝重入队并由队列死信策略处理），以及死信持久化与重放。独立服务间的 Outbox/RabbitMQ/Inbox 交接由 Compose CI 端到端验证，包含 RabbitMQ 停机、事件暂存、broker 恢复和投递成功检查。GitHub Actions 会执行以上测试；首次运行会下载 Maven 依赖：
 
 ```powershell
 docker compose --profile test run --rm integration-tests
@@ -200,10 +200,18 @@ GitHub Actions 在每次推送和 Pull Request 上运行两项独立检查：Pos
 | `POST` | `/api/v1/endpoints` | 注册订阅端点，返回一次性签名密钥 |
 | `GET` | `/api/v1/endpoints` | 列出端点 |
 | `PATCH` | `/api/v1/endpoints/{endpointId}` | 暂停或恢复端点（`{"enabled":false}` / `{"enabled":true}`） |
+| `PUT` | `/api/v1/endpoints/{endpointId}` | 更新端点 URL、事件类型与熔断参数 |
+| `DELETE` | `/api/v1/endpoints/{endpointId}` | 软删除端点；之后的新事件不再包含它 |
+| `POST` | `/api/v1/endpoints/{endpointId}/secret/rotate` | 轮换签名密钥，只返回一次新密钥 |
 | `POST` | `/api/v1/events` | 发布事件；同一幂等键只创建一次事件 |
 | `GET` | `/api/v1/events/{eventId}/deliveries` | 查看事件的投递状态 |
 | `GET` | `/api/v1/deliveries/{deliveryId}/attempts` | 查看逐次投递尝试、状态码与耗时 |
 | `POST` | `/api/v1/deliveries/{deliveryId}/replay` | 重放已完成或进入死信的投递 |
+| `GET` | `/api/v1/admin/outbox?status=pending\|abandoned\|published` | 主密钥：查看 Outbox 待发布、已隔离或已发布记录 |
+| `POST` | `/api/v1/admin/outbox/{eventId}/retry` | 主密钥：把隔离的 Outbox 事件重新排队 |
+| `POST` | `/api/v1/admin/outbox/{eventId}/abandon` | 主密钥：人工隔离持续阻塞的 Outbox 事件 |
+| `GET` | `/api/v1/admin/dead-letters` | 主密钥：查看已持久化的 RabbitMQ 死信 |
+| `POST` | `/api/v1/admin/dead-letters/{id}/replay` | 主密钥：重放一条死信 |
 | `GET` | `/actuator/health` | 健康检查 |
 | `GET` | `/actuator/metrics/relaybox.delivery.queue.depth` | 查看待处理、执行中和死信队列深度 |
 | `GET` | `/actuator/metrics/relaybox.delivery.queue.oldest.pending.age` | 查看最老待处理投递的等待秒数 |
@@ -219,7 +227,7 @@ GitHub Actions 在每次推送和 Pull Request 上运行两项独立检查：Pos
 
 Webhook 目标默认必须是 HTTP/HTTPS，且解析后不能指向回环、内网、链路本地、组播或保留地址；创建端点和发送请求前都会检查。项目的本地 Compose 演示需要访问容器内的测试接收器，因此显式设置 `ALLOW_PRIVATE_WEBHOOK_TARGETS=true`。部署到可访问外网的环境时应保持默认 `false`，并配合网络层出口规则限制服务可访问的网段。
 
-端点可以按租户暂停或恢复。暂停后新接受的事件不再包含该端点；已经随事件快照进入 Delivery Service 的投递会继续处理。端点列表包含启停状态，租户不能修改其他租户的端点。
+端点可以按租户暂停或恢复，也可以通过 `PUT` 更新 URL、事件类型与熔断参数，或用 `DELETE` 软删除；`POST /endpoints/{id}/secret/rotate` 只返回一次新签名密钥。这些变更只影响之后接受的事件；已经随事件快照进入 Delivery Service 的投递会继续使用旧地址和旧密钥。端点列表包含启停状态，租户不能修改其他租户的端点。
 
 每个端点维护独立的熔断器：连续失败达到 `circuitFailureThreshold` 后进入 `OPEN`，冷却 `circuitOpenDurationSeconds` 后转为 `HALF_OPEN`。多个 Worker 通过数据库端点级探测租约协调，冷却后同一端点只放行一个探测投递；成功恢复为 `CLOSED` 并清零失败计数，失败则重新打开熔断器。端点创建请求可设置这两个字段，默认分别为 5 次和 30 秒；`GET /api/v1/endpoints` 会返回熔断状态、连续失败数和冷却截止时间。相关默认值可通过 `CIRCUIT_FAILURE_THRESHOLD` 和 `CIRCUIT_OPEN_DURATION_SECONDS` 调整。
 
@@ -229,8 +237,31 @@ Webhook 目标默认必须是 HTTP/HTTPS，且解析后不能指向回环、内�
 
 Delivery Service 队列由其 PostgreSQL 数据库持久化：多个副本的 worker 使用 `FOR UPDATE SKIP LOCKED` 领取互不重叠的任务；任务带两分钟租约。租约过期后，下次轮询会关闭遗留的 `IN_FLIGHT` 尝试并按剩余次数重新入队，达到上限则转为 `DEAD`。服务内队列集成测试覆盖同端点顺序与重试阻塞、跨端点并行领取、强制过期租约和尝试次数耗尽；Compose CI 还会验证 RabbitMQ 中断期间 Outbox 暂存、broker 恢复后 Inbox 接收及最终投递成功。
 
+## 失败隔离与运维
+
+Outbox 发布器为每条事件记录 `attempts`、`next_attempt_at`、`failure_kind` 和 `last_error`。失败按 200 ms 起、上限 60 秒的指数退避重试；重试期间该事件仍占据队头，后续事件不会越过它，从而保持端点投递顺序。
+
+自动隔离只针对确定性的消息转换失败：达到 `OUTBOX_MAX_ATTEMPTS`（默认 50）后写入 `abandoned_at` 并继续发布后续事件，同时累加 `relaybox.outbox.messages.quarantined` 与 `relaybox.outbox.quarantined` 指标。broker 不可用、NACK、路由失败属于基础设施故障，继续阻塞而不是隔离，避免在故障期间丢事件。持续阻塞的事件由运维通过主密钥接口处理：
+
+```powershell
+$admin = @{ "X-API-Key" = $env:RELAYBOX_MASTER_KEY }
+Invoke-RestMethod -Uri "http://localhost:8080/api/v1/admin/outbox?status=abandoned" -Headers $admin
+Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/v1/admin/outbox/<eventId>/retry" -Headers $admin
+```
+
+RabbitMQ 死信队列 `relaybox.delivery.events.dead` 由 Delivery Service 消费并持久化到自己的 `dead_letter_message` 表；消息指纹用于吸收「已落库但未来得及 ack」的重复投递，数据库不可用时消息退回队列而不是丢弃。死信可通过 `GET /api/v1/admin/dead-letters` 查看，`POST /api/v1/admin/dead-letters/{id}/replay` 重放；重放仍经过 Inbox 去重，因此不会重复创建投递，但消息本身无法解析时会再次进入死信。
+
+Worker 线程池饱和或进程中断属于本地失败，不计入端点连续失败、不触发熔断，也不消耗重试预算：任务回到 `PENDING` 并将 `max_attempts` 加一。
+
+事件 payload 默认限制为 256 KiB（`MAX_PAYLOAD_BYTES`）；超过时在写入事件前返回 HTTP 400，避免超大消息放大 Outbox、broker 和接收端成本。
+
 ## 当前边界与下一步
 
 - API 集成测试仍使用兼容的单体 Worker 配置；Delivery Service 目前由队列集成测试和 Compose 故障恢复作业覆盖，后续可补全独立服务的契约测试与更细粒度故障注入。
+- 单体兼容路径与 Delivery Service 仍各自维护一份 `DeliveryQueue`、`DeliveryWorker` 和 `WebhookTargetPolicy`，后续应抽成共享模块或移除兼容路径。
+- `event_outbox`、`dead_letter_message`、投递与尝试历史还没有自动归档/清理作业，需要按保留策略单独运维。
+- 自动隔离只覆盖确定性消息转换失败；broker/拓扑类持续故障会有意阻塞 Outbox，需要借助 `relaybox.outbox.unpublished` 告警和 admin 接口处置。
+- Outbox 发布器仍在事务内等待 publisher confirm；broker 延迟高时事务和单发布者锁会限制吞吐，后续可改为逐条独立事务或异步 confirm 状态机。
+- 端点暂停、删除和签名密钥轮换只影响新事件；轮换期间接收端需要同时接受新旧密钥，直到旧快照投递完成。
 - 当前基准只测了本机固定负载，没有确定饱和点，也没有证明多副本带来性能提升；下一轮应按阶梯负载测出拐点，并记录数据库、RabbitMQ 和容器资源数据。
 - 生产部署仍需补充凭据管理、出口网络策略、备份恢复、审计与告警，并在目标环境重新做容量验证。
