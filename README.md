@@ -17,7 +17,7 @@ RelayBox 是一个可靠的 Webhook 事件投递服务。业务系统提交事�
 
 - **避免跨服务双写丢失：** Event API 在一个 PostgreSQL 事务中写事件与 Outbox；RabbitMQ Publisher Confirm 后标记已发布，Delivery Service 用幂等 Inbox 接收至少一次消息。
 - **应对投递进程崩溃：** Delivery Service 在独立 PostgreSQL 中持久化任务，以 `SKIP LOCKED`、执行租约、端点顺序和指数退避恢复投递；失败任务可进入死信并人工重放。
-- **验证消息可靠性：** 22 项 API 模块测试覆盖业务规则；6 项 Delivery Service 消息与死信测试覆盖 Outbox NACK、Inbox 重复消费、消费端数据库短暂故障后的有界退避重试、耗尽处理以及死信持久化与重放；Compose CI 再停掉 RabbitMQ，验证中断期间事件保留且恢复后两条投递成功。
+- **验证消息可靠性：** 24 项 API 模块测试覆盖业务规则与保留期清理；9 项 Delivery Service 消息、死信与保留期测试覆盖 Outbox NACK、Inbox 重复消费、消费端数据库短暂故障后的有界退避重试、耗尽处理以及死信持久化与重放；Compose CI 再停掉 RabbitMQ，验证中断期间事件保留且恢复后两条投递成功。
 - **公开性能边界：** 本机 45 事件/秒固定负载重复六轮，共成功投递 8100 个事件。该负载下副本翻倍没有测出延迟收益，因此结果不作为最大吞吐或生产容量承诺。见[压测记录](benchmarks/2026-10-19-microservices.md)。
 
 查看[微服务架构说明](docs/microservice-architecture.md)、[三分钟面试演示](docs/面试演示.md)，或直接启动下方管理台演示。
@@ -255,11 +255,42 @@ Worker 线程池饱和或进程中断属于本地失败，不计入端点连续�
 
 事件 payload 默认限制为 256 KiB（`MAX_PAYLOAD_BYTES`）；超过时在写入事件前返回 HTTP 400，避免超大消息放大 Outbox、broker 和接收端成本。
 
+## 数据保留与清理
+
+两个服务各自运行保留期清理任务，默认关闭。`RETENTION_ENABLED=true` 开启后，任务按窗口分批删除终态历史；`RETENTION_DRY_RUN` 默认仍为 `true`，只统计并写日志，确认数量后再设为 `false`。
+
+| 配置 | 默认 | 清理对象 |
+| --- | --- | --- |
+| `RETENTION_OUTBOX_PUBLISHED_DAYS` | 7 | 已发布的 Outbox 记录 |
+| `RETENTION_OUTBOX_ABANDONED_DAYS` | 30 | 已隔离的 Outbox 记录 |
+| `RETENTION_DELIVERY_TERMINAL_DAYS` | 30 | `SUCCEEDED` / `DEAD` 投递及其尝试记录 |
+| `RETENTION_EVENT_DAYS` | 90 | 不再被 Outbox 或投递引用的事件 |
+| `RETENTION_INBOX_DAYS` | 30 | Delivery Service 的 Inbox 去重记录 |
+| `RETENTION_DEAD_LETTER_REPLAYED_DAYS` | 30 | 已重放的死信 |
+| `RETENTION_BATCH_SIZE` | 500 | 单批删除行数 |
+| `RETENTION_INTERVAL_MS` | 3600000 | 调度间隔（毫秒） |
+| `RETENTION_INITIAL_DELAY_MS` | 60000 | 首次执行延迟（毫秒） |
+
+`RETENTION_EVENT_DAYS` 同时是事件幂等键的保留窗口：事件被清理后，同一 `idempotency_key` 可以再次创建事件。`RETENTION_INBOX_DAYS` 同时是 Delivery Service 的消费去重窗口；如果 RabbitMQ 可能保留消息超过该窗口，应调大此值。需要更长幂等期时，应调大窗口或把幂等键迁移到独立表。
+
+清理顺序是 Outbox → 尝试 → 终态投递 → 事件；Delivery 侧再清理 Inbox 与已重放死信。`PENDING` / `IN_FLIGHT` 投递、未发布且未隔离的 Outbox、未重放的死信，以及仍被 Outbox 或投递引用的事件永远不会被选中。每批独立提交，避免长事务；拆分模式下两个数据库各自由所属服务清理，单体兼容路径中的投递历史由 API 清理。保留期索引见 API 的 `V12__retention_indexes.sql` 与 Delivery 的 `V4__retention_indexes.sql`。
+
+建议先用 dry-run 观察一轮：
+
+```powershell
+$env:RETENTION_ENABLED = "true"
+$env:RETENTION_DRY_RUN = "true"
+docker compose up -d
+docker compose logs -f app delivery-service | Select-String "Retention"
+```
+
+日志会给出每类数据的待删除数量；确认后再设 `RETENTION_DRY_RUN=false` 并重启服务。
+
 ## 当前边界与下一步
 
 - API 集成测试仍使用兼容的单体 Worker 配置；Delivery Service 目前由队列集成测试和 Compose 故障恢复作业覆盖，后续可补全独立服务的契约测试与更细粒度故障注入。
 - 单体兼容路径与 Delivery Service 仍各自维护一份 `DeliveryQueue`、`DeliveryWorker` 和 `WebhookTargetPolicy`，后续应抽成共享模块或移除兼容路径。
-- `event_outbox`、`dead_letter_message`、投递与尝试历史还没有自动归档/清理作业，需要按保留策略单独运维。
+- 保留期清理默认关闭，需要按环境显式开启并先跑 dry-run；历史数据归档到对象存储或数仓尚未实现，长期审计需要外接数据管道。
 - 自动隔离只覆盖确定性消息转换失败；broker/拓扑类持续故障会有意阻塞 Outbox，需要借助 `relaybox.outbox.unpublished` 告警和 admin 接口处置。
 - Outbox 发布器仍在事务内等待 publisher confirm；broker 延迟高时事务和单发布者锁会限制吞吐，后续可改为逐条独立事务或异步 confirm 状态机。
 - 端点暂停、删除和签名密钥轮换只影响新事件；轮换期间接收端需要同时接受新旧密钥，直到旧快照投递完成。

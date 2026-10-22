@@ -28,6 +28,10 @@ Endpoint URL and signing-secret snapshots are included in the RabbitMQ message s
 - **Webhook receiver unavailable:** delivery retries and circuit state are handled entirely in the Delivery Service database. Worker-pool saturation and shutdown interrupts defer the task without consuming retry budget or tripping the circuit.
 - **Delivery state reads:** the public API proxies them to the Delivery Service. The local management UI's queue metrics are refreshed through an internal stats endpoint; if that service is unavailable, the last sample is retained and a proxy error counter increments.
 
+## Retention
+
+Each service owns retention for its own database. The Event API removes published or quarantined outbox rows and then events that are no longer referenced by an outbox row or a delivery. The Delivery Service removes attempts and terminal deliveries, events no longer referenced by a delivery, inbox keys and replayed dead letters. Both jobs are disabled by default and default to dry-run; pending/in-flight deliveries, unpublished outbox rows, unreplayed dead letters and referenced events are never selected. See the README for the retention windows and configuration.
+
 ## Local deployment
 
 ```powershell
