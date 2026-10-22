@@ -18,9 +18,9 @@ RelayBox 是一个可靠的 Webhook 事件投递服务。业务系统提交事�
 - **避免跨服务双写丢失：** Event API 在一个 PostgreSQL 事务中写事件与 Outbox；RabbitMQ Publisher Confirm 后标记已发布，Delivery Service 用幂等 Inbox 接收至少一次消息。
 - **应对投递进程崩溃：** Delivery Service 在独立 PostgreSQL 中持久化任务，以 `SKIP LOCKED`、执行租约、端点顺序和指数退避恢复投递；失败任务可进入死信并人工重放。
 - **验证消息可靠性：** 24 项 API 模块测试覆盖业务规则与保留期清理；9 项 Delivery Service 消息、死信与保留期测试覆盖 Outbox NACK、Inbox 重复消费、消费端数据库短暂故障后的有界退避重试、耗尽处理以及死信持久化与重放；Compose CI 再停掉 RabbitMQ，验证中断期间事件保留且恢复后两条投递成功。
-- **公开性能边界：** 本机 45 事件/秒固定负载重复六轮，共成功投递 8100 个事件。该负载下副本翻倍没有测出延迟收益，因此结果不作为最大吞吐或生产容量承诺。见[压测记录](benchmarks/2026-10-19-microservices.md)。
+- **公开性能边界：** 本机 Docker Desktop（32 逻辑 CPU）以 200 events/s 持续 30 秒完成 6,000 个事件，API P95 16 ms、投递 P95 240 ms，0 积压、0 死信；2,000 个事件以约 618 events/s 突发提交全部接受。结果只代表本机快速接收端条件，不是最大吞吐或生产容量承诺。见[收尾复测](benchmarks/2026-10-22-revalidation.md)。
 
-查看[微服务架构说明](docs/microservice-architecture.md)、[三分钟面试演示](docs/面试演示.md)，或直接启动下方管理台演示。
+查看[架构与可靠性设计](docs/architecture.md)、[微服务边界说明](docs/microservice-architecture.md)，或直接启动下方管理台演示。
 
 ## 本地启动
 
@@ -169,7 +169,7 @@ docker compose --profile test run --rm integration-tests
 
 测试数据库与开发数据库分开。测试 PostgreSQL 对外映射到 `127.0.0.1:55432`，方便需要时从 IDE 连接；测试结束后可用 `docker compose stop postgres-test` 停止它，不会影响正在运行的 RelayBox 开发服务。
 
-本机固定速率投递压测的方法、原始数据与可用于简历的限定表述见 [压测记录](benchmarks/README.md)、[轮询间隔调优记录](benchmarks/2026-10-19-polling.md) 和 [Outbox 与投递队列调优](benchmarks/2026-10-19-outbox-queue-tuning.md)。最终配置下 150 事件/秒已重复 3 轮；记录区分 API 接受速率、队列积压和最终投递延迟。
+本机固定速率投递压测的方法、原始数据与可用于性能说明的限定表述见 [压测记录](benchmarks/README.md)、[2026-10-22 收尾复测](benchmarks/2026-10-22-revalidation.md)、[轮询间隔调优记录](benchmarks/2026-10-19-polling.md) 和 [Outbox 与投递队列调优](benchmarks/2026-10-19-outbox-queue-tuning.md)。最终配置下 200 events/s 已用 6,000 个事件验证稳态；记录区分 API 接受速率、队列积压和最终投递延迟。
 
 服务边界、Outbox/InBox 投递流程、消息顺序及故障语义见 [微服务架构说明](docs/microservice-architecture.md)。生产容量评估步骤、扩容判据和 Compose 开发环境的上线边界见 [容量评估与生产部署边界](docs/production-capacity.md)。Webhook 接收端的签名校验、事务幂等步骤和外部副作用限制见 [接收端幂等实现](docs/receiver-idempotency.md)。
 
@@ -187,7 +187,7 @@ docker compose --profile test run --rm integration-tests
 
 从其他 IDEA 项目或任意 PowerShell 目录运行时，也可以调用脚本绝对路径；脚本会自行定位 RelayBox 根目录。例如：`& 'D:\DeskTop\后端学习\backend\scripts\chaos-recovery.ps1'`。
 
-现场讲解顺序、常见追问和限定的简历表述见 [面试演示说明](docs/面试演示.md)。
+现场演示前建议先阅读 [故障接管演示](benchmarks/chaos-recovery.md) 和 [容量边界](docs/production-capacity.md)。
 
 GitHub Actions 在每次推送和 Pull Request 上运行两项独立检查：PostgreSQL 支持的 API 集成测试，以及完整 Compose 栈的 RabbitMQ 中断恢复验证。状态见页面顶部的 CI 徽章。
 
@@ -294,5 +294,5 @@ docker compose logs -f app delivery-service | Select-String "Retention"
 - 自动隔离只覆盖确定性消息转换失败；broker/拓扑类持续故障会有意阻塞 Outbox，需要借助 `relaybox.outbox.unpublished` 告警和 admin 接口处置。
 - Outbox 发布器仍在事务内等待 publisher confirm；broker 延迟高时事务和单发布者锁会限制吞吐，后续可改为逐条独立事务或异步 confirm 状态机。
 - 端点暂停、删除和签名密钥轮换只影响新事件；轮换期间接收端需要同时接受新旧密钥，直到旧快照投递完成。
-- 当前基准只测了本机固定负载，没有确定饱和点，也没有证明多副本带来性能提升；下一轮应按阶梯负载测出拐点，并记录数据库、RabbitMQ 和容器资源数据。
+- 当前基准已覆盖本机 200 events/s 稳态与 2,000 事件突发，并结合历史记录观察到 275 events/s 起出现 Outbox 积压；但尚未做多轮重复、长时间 soak 和容器/数据库/RabbitMQ 资源曲线，不能据此给出生产容量或多副本线性扩容结论。
 - 生产部署仍需补充凭据管理、出口网络策略、备份恢复、审计与告警，并在目标环境重新做容量验证。

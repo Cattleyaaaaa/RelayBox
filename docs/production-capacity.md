@@ -29,7 +29,7 @@ RelayBox 当前 Compose 与压测数据用于本地开发和方案验证，不�
 
 当前脚本 `scripts/benchmark.mjs` 会记录主机与 Docker CPU/内存、Worker 数量、固定速率、API 延迟样本、投递 P50/P95/P99、发压结束时的待投递数量和积压年龄、失败数和压测报告。`relaybox.delivery.queue.oldest.pending.age` 指标提供一个全队列积压年龄信号；与队列深度、投递延迟、数据库 CPU/IO、连接池等待和重试率一起观察。该指标按 `created_at` 计算最老待处理投递年龄，会包含因端点顺序而等待的后续任务。
 
-当前已有的本机数据说明：在 2 个 Worker、40 条有序端点流、快速 HTTP 200 接收端、Docker Desktop 条件下，150 events/s 持续 60 秒全部成功；200 events/s 持续 25 秒出现明显积压。这不是生产容量，也没有覆盖慢接收端、持续失败、HA 故障切换或长时间数据增长。详情见 [轮询间隔调优记录](../benchmarks/2026-10-19-polling.md)。
+当前已有本机数据：在 1 个 API、1 个 Delivery Service、40 条有序端点流、快速 HTTP 200 接收端、Docker Desktop（32 vCPU）条件下，200 events/s 持续 30 秒完成 6,000 个事件（API P95 16 ms、投递 P95 240 ms、0 积压）；2,000 个事件以约 618 events/s 突发提交全部接受，但投递 P95 约 5.96 秒。历史调优记录中 250 events/s、2 个租户仍全部成功，275 events/s 起开始出现 Outbox 积压，400 events/s 投递 P95 约 14.95 秒。这不是生产容量，也没有覆盖慢接收端、持续失败、HA 故障切换或长时间数据增长。详情见 [2026-10-22 收尾复测](../benchmarks/2026-10-22-revalidation.md) 和 [Outbox 与投递队列调优](../benchmarks/2026-10-19-outbox-queue-tuning.md)。
 
 ## 按观测结果扩展
 

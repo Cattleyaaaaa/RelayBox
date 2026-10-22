@@ -1,0 +1,55 @@
+﻿{
+    "scenario":  "delivery-service-crash-lease-recovery",
+    "recordedAt":  "2026-10-22T03:08:31.0093868Z",
+    "leaseSeconds":  12,
+    "eventId":  "d1bfc039-6966-4708-b19a-6f68e59b29e9",
+    "deliveryId":  "5d646509-2eb5-4cb3-b29e-6d4dc20483d9",
+    "finalStatus":  "SUCCEEDED",
+    "firstWorkerKilledAfterReceiverAccepted":  true,
+    "workerANetworkAliases":  [
+                                  "relaybox-chaos-a-30871c5c",
+                                  "delivery-service"
+                              ],
+    "attempts":  [
+                     {
+                         "id":  "0a7ac67e-a87c-4d4b-8a38-95675b820085",
+                         "attemptNumber":  1,
+                         "status":  "FAILED",
+                         "error":  "worker lease expired before completion",
+                         "durationMs":  12081,
+                         "startedAt":  "2026-10-22T03:08:18.802679Z",
+                         "completedAt":  "2026-10-22T03:08:30.883699Z"
+                     },
+                     {
+                         "id":  "a712374a-6ef7-4c1f-907e-57ffb447b7bf",
+                         "attemptNumber":  2,
+                         "status":  "SUCCEEDED",
+                         "responseCode":  200,
+                         "durationMs":  38,
+                         "startedAt":  "2026-10-22T03:08:30.883699Z",
+                         "completedAt":  "2026-10-22T03:08:30.921773Z"
+                     }
+                 ],
+    "receiverAppliedBusinessEffects":  1,
+    "receiverReceipts":  [
+                             {
+                                 "requestNumber":  1,
+                                 "receivedAt":  "2026-10-22T03:08:18.838880036Z",
+                                 "deliveryId":  "5d646509-2eb5-4cb3-b29e-6d4dc20483d9",
+                                 "eventId":  "d1bfc039-6966-4708-b19a-6f68e59b29e9",
+                                 "businessEffectApplied":  true,
+                                 "idempotencyConflict":  false,
+                                 "responseCode":  200
+                             },
+                             {
+                                 "requestNumber":  2,
+                                 "receivedAt":  "2026-10-22T03:08:30.913011085Z",
+                                 "deliveryId":  "5d646509-2eb5-4cb3-b29e-6d4dc20483d9",
+                                 "eventId":  "d1bfc039-6966-4708-b19a-6f68e59b29e9",
+                                 "businessEffectApplied":  false,
+                                 "idempotencyConflict":  false,
+                                 "responseCode":  200
+                             }
+                         ],
+    "note":  "Two physical HTTP requests share one delivery ID; receiver deduplication applies the demo business effect once."
+}

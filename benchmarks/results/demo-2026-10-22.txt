@@ -1,0 +1,20 @@
+# RelayBox business demo - 2026-10-22 (Compose)
+# 验证重试、死信重放、端点熔断和租户限流；不含 API Key。
+
+RelayBox is healthy at http://localhost:8080
+Created demo tenant 786671ef-5fbe-48ae-ab2e-12a05027d825
+Registered endpoint 061dbe69-a555-404e-9a4d-f9a51f579cdd
+Retry demonstration: 3 attempts, final state SUCCEEDED
+
+attemptNumber status    responseCode durationMs
+------------- ------    ------------ ----------
+            1 FAILED             500         10
+            2 FAILED             500          6
+            3 SUCCEEDED          200          6
+
+
+Dead-letter demonstration: delivery 6a7e785b-3bc5-49eb-b366-8676155dbe76 reached DEAD after 3 attempts
+Replay demonstration: delivery succeeded on attempt 4
+Circuit-breaker demonstration: opened after 1 failure, recovered to CLOSED after 2 attempts
+Rate-limit demonstration: second event returned HTTP 429 (Retry-After: 60 seconds)
+Demo completed. Tenant API keys were kept in memory and are not printed.

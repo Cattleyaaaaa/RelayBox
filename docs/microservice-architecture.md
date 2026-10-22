@@ -46,4 +46,4 @@ Scale the Delivery Service (its Rabbit listener remains single-active while its 
 docker compose up -d --scale delivery-service=3 delivery-service
 ```
 
-The old API database schema still contains delivery tables for local legacy data and the integration-test compatibility path. New Compose-mode deliveries are written only to `relaybox_delivery`; existing legacy delivery records remain readable through a fallback. Historical throughput measurements were taken before this split and must not be presented as measurements of the RabbitMQ architecture.
+The old API database schema still contains delivery tables for local legacy data and the integration-test compatibility path. New Compose-mode deliveries are written only to `relaybox_delivery`; existing legacy delivery records remain readable through a fallback. Measurements taken before this split are not comparable with the current architecture; the current 200 events/s revalidation is documented in [`benchmarks/2026-10-22-revalidation.md`](../benchmarks/2026-10-22-revalidation.md). For the diagram, data ownership and failure matrix, see [`architecture.md`](architecture.md).
